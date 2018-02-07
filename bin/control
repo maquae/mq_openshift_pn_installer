@@ -1,0 +1,298 @@
+#!/bin/bash
+
+# Determine the program name and the 'running directory'
+IAM="${0##*/}"
+CRD="$( [[ "${0:0:2}" = "./" ]] &&
+	{	printf "${PWD}/${0#./}"
+	} || {
+		printf "${0}"
+	})"
+CRD="${CRD%/*}"
+CUR="${PWD}"
+
+# Make sure all language settings are correct
+export LANG=C
+
+# Make sure encoding is set to UTF-8, this is needed for Webdav file encoding
+export LC_ALL=en_US.UTF-8
+
+# Save the shell settings
+SETA=0; [[ ${-} = *a* ]] && SETA=1
+SETE=0; [[ ${-} = *e* ]] && SETE=1
+SETU=0; [[ ${-} = *u* ]] && SETU=1
+SETX=0; [[ ${-} = *x* ]] && SETX=1
+
+# Set and unset the needed shell settings
+set +o noclobber		# Overwrite existing files, if needed
+set -o nounset			# Do not allow uninitialized variables
+set +o errexit			# No returncode checking
+
+# Set the PATH
+PATH=/bin:/usr/bin:${PATH}
+
+# Read the OpenShift functions
+source ${OPENSHIFT_CARTRIDGE_SDK_BASH}
+
+# Set constants and read constants
+LIBDIR="${CRD}/../lib"
+LIBRARY="${LIBDIR}/library"
+[[ ! -r ${LIBRARY} ]] && { echo "${LIBRARY} not found"; exit 1; }
+. ${LIBRARY} || { echo "Error reading ${LIBRARY}"; exit 1; }
+
+
+# Check if the process is running
+# ${1} is the PID file for the app (Tomcat / Wildfly)
+isrunning() {
+	PIDFILE="${1}"
+
+	# Check for running app
+	if [[ -f "${PIDFILE}" ]]
+	then
+		running=$(/bin/ps --no-headers --pid $(<${PIDFILE}))
+		if [[ x"${running}" = x"" ]]
+		then
+			# Not running
+			return 1
+		else
+			# running
+			return 0
+		fi
+	fi
+
+	# No PID file. Not running
+	return 1
+}
+
+
+# Kill the process given by ${1} and its children
+killtree() {
+	local _pid="${1}"
+	showstatus "0" "killtree ${1}"
+	for _child in $(ps -o pid --no-headers --ppid ${_pid})
+	do
+		killtree ${_child}
+	done
+
+	local should_be_gone_pid=$(ps -o pid -p ${_pid} --no-headers)
+	if [[ x"${should_be_gone_pid}" = x"" ]]
+	then
+		return
+	else
+		# process might have finished stopping after the ps check above
+		# so prevent kill from throwing an error
+		# with || true
+		kill -TERM ${_pid} || true
+	fi
+
+	local count=0
+	while [[ ${count} -lt 15 ]]
+	do
+		local should_be_gone_pid=$(ps -o pid -p ${_pid} --no-headers)
+		if [[ x"${should_be_gone_pid}" = x"" ]]
+		then
+			return
+		else
+			sleep 2
+			count=$(( ${count} + 1 ))
+		fi
+	done
+
+	local should_be_gone_pid=$(ps -o pid -p ${_pid} --no-headers)
+	if [[ x"${should_be_gone_pid}" != x"" ]]
+	then
+		kill -9 ${_pid}
+	fi
+}
+
+
+mount()
+{
+	share $1
+}
+
+# Start all services
+start()
+{
+	showstatus "0" "start"
+	showstatus "0" "Start planon cartridge runtime"
+	progs="${1:-all}"
+	${OPENSHIFT_PLN_DIR}/bin/startup onlyrunfromscript ${progs} > ${OPENSHIFT_PLN_DIR}/logs/startup_script.log 2>&1 &
+	showstatus "0" "Done starting planon cartridge runtime"
+}
+
+
+# Stop all services
+stop()
+{
+	progs="${1:-all}"
+
+	showstatus "0" "	Stop openshift cartridge runtime"
+
+	if [[ ( x"${progs}" = x"all" ) || ( x"${progs}" = x"tomcat" ) ]]
+	then
+		# Check if Tomcat is running
+		if isrunning ${TOMCATPID}
+		then
+			showstatus "0" "Program Tomcat is running, stop it."
+			export CATALINA_PID=${TOMCATPID}
+			${TOMCAT}/bin/shutdown.sh -force
+		else
+			showstatus "0" "Program Tomcat is already stopped"
+		fi
+		rm -f ${TOMCATPID}
+		#Cleanup temp folder
+		rm -rf ${TOMCAT}/temp/*
+	fi
+
+    if [[ x"${progs}" = x"all" ]] 
+       then
+       sleep 10
+    fi
+
+	if [[ ( x"${progs}" = x"all" ) || ( x"${progs}" = x"wildfly" ) ]]
+	then
+		# Check if Wildfly is running
+		if isrunning ${WILDFLYPID}
+		then
+			showstatus "0" "Program Wildfly is running, stop it."
+			pid=$(cat ${WILDFLYPID})
+			killtree ${pid}
+		else
+			showstatus "0" "Program Wildfly is already stopped"
+		fi
+		rm -f ${WILDFLYPID}
+		#Cleanup temp folders
+		rm -rf ${WILDFLY}standalone/data/bundlecache
+		rm -rf ${WILDFLY}standalone/tmp
+	fi
+	
+	showstatus "0" "Remove share to make sure we dont have any shares. This command can fail"
+	share 'remove'
+	return 0
+}
+
+
+
+# Restart all services
+restart()
+{
+	progs="${1:-all}"
+
+	typeset -i RC=0
+
+	stop "${progs}"		|| RC=RC+1
+	sleep 5
+	start "${progs}"	|| RC=RC+1
+	return ${RC}
+}
+
+
+# Display the status of the services
+status()
+{
+	typeset -i RC=0
+
+	# Check if WILDFLY is running
+	if isrunning ${WILDFLYPID}
+	then
+		showstatus "0" "	Wildfly is running"
+	else
+		showstatus "1" "	Wildfly is NOT running"
+		RC=RC+1
+	fi
+
+	# Check if Tomcat is running
+	if isrunning ${TOMCATPID}
+	then
+		showstatus "0" "	Tomcat is running"
+	else
+		showstatus "1" "	Tomcat is NOT running"
+		RC=RC+1
+	fi
+
+	return ${RC}
+}
+
+
+# Link Method, creates symlinks per file in a specific directory
+link()
+{
+  TMS_FROM_DIR=${OPENSHIFT_PLN_DIR}data/tms/upload/$1/*
+  TMS_TO_DIR=$2
+  echo "# Beginning links for $1 to $TMS_TO_DIR" >> "${OPENSHIFT_PLN_DIR}data/tms/status/TMS-deployed.out"
+  #Remove broken links
+  find -L "$TMS_TO_DIR" -type l -exec rm -f {} +
+  #Loop over all files
+  for f in $TMS_FROM_DIR
+  do
+    echo "Processing $f file..."
+    if [ -f "$f" ] ; then
+          # Get file name from the file
+      FILE_NAME=`echo "$f"| rev | cut -d"/" -f1 | rev`
+      # echo the sdk
+      echo "$1:$FILE_NAME" >> "${OPENSHIFT_PLN_DIR}data/tms/status/TMS-deployed.out"
+      ln -s "$f" "$TMS_TO_DIR/$FILE_NAME"
+    fi
+  done
+  echo "#### end $1 ####" >> "${OPENSHIFT_PLN_DIR}data/tms/status/TMS-deployed.out"
+  echo "" >> "${OPENSHIFT_PLN_DIR}data/tms/status/TMS-deployed.out"
+}
+
+# Procedure to link TMS
+tms()
+{
+        NOW=$(date +"%T %d-%m-%Y")
+        echo "# This file is reserved for TMS entries - Last updated $NOW" > "${OPENSHIFT_PLN_DIR}data/tms/status/TMS-deployed.out"
+
+        link "sdk" "${TOMCAT}bundles/sdk"
+        link "jboss-web" "${WILDFLY_BUNDLES}planon/web"
+        link "jboss" "${WILDFLY_BUNDLES}planon"
+        link "scheduler" "${WILDFLY_BUNDLES}planon"
+}
+
+# Procedure to empty log files
+tidy()
+{
+	#R16 CHECK COMPLEET ZIJN LIJST
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/catalina*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/host-manager*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/manager*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/mobile*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/kiosk*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/perfmon*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/sdk*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/tomcat*.*
+	truncate --size 0 ${OPENSHIFT_PLN_DIR}/logs/localhost.*
+}
+
+catchall()
+{
+	showstatus "0" "	${1:-}: not yet implemented"
+
+	return 0
+}
+
+
+showstatus "0" "Control Main called"
+case "${1:-}"
+in
+	start)					start   "${2:-all}"	     ;;
+	stop)					stop    "${2:-all}"	     ;;
+	restart)				restart	"${2:-all}"	     ;;
+	status)					status				     ;;
+    mount)                  mount    "${2:-create}"  ;; 
+	tidy)					tidy                     ;;
+	tms)					tms                      ;;
+	deploy)					catchall "${1}"		     ;;
+	reload)					catchall "${1}"	         ;;
+	pre-build)				catchall "${1}"	         ;;
+	build)					catchall "${1}"	         ;;
+	post-deploy)			catchall "${1}"	         ;;
+	pre-repo-archive)		catchall "${1}"	         ;;
+	update-configuration)	catchall "${1}"	         ;;
+	*)						catchall "Unknown"       ;;
+esac
+
+# Exit. No exit code!! The exit code will be the exit code
+# of the last run process!!
+exit

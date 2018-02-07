@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Calculate the memory alotted to WILDFLY 
+
+# Calculate the memory alotted to WILDFLY
+MAXMXMEM=$(awk  -v perc=<%= ENV['PLN_WILDFLY_MEMORY'] %> -v tot=${OPENSHIFT_GEAR_MEMORY_MB} '
+        BEGIN { print int(tot * perc / 100) }')
+
+JAVA_OPTS=""
+JAVA_OPTS="${JAVA_OPTS} -server" 
+JAVA_OPTS="${JAVA_OPTS} -da"
+JAVA_OPTS="${JAVA_OPTS} -Xms1024m"
+JAVA_OPTS="${JAVA_OPTS} -Xmx${MAXMXMEM}m"
+JAVA_OPTS="${JAVA_OPTS} -Dorg.jboss.boot.log.file=<%= ENV['OPENSHIFT_PLN_DIR'] %>logs/boot/boot.log"
+JAVA_OPTS="${JAVA_OPTS} -Djboss.server.log.dir=<%= ENV['OPENSHIFT_PLN_DIR'] %>logs/"
+JAVA_OPTS="${JAVA_OPTS} -Dlogging.configuration=file:${WILDFLY_CONF}/logging.properties"
+JAVA_OPTS="${JAVA_OPTS} -XX:+UseG1GC"
+JAVA_OPTS="${JAVA_OPTS} -Djava.net.preferIPv4Stack=true"
+JAVA_OPTS="${JAVA_OPTS} -Dorg.jboss.resolver.warning=true"
+JAVA_OPTS="${JAVA_OPTS} -Djboss.modules.system.pkgs=org.jboss.byteman"
+JAVA_OPTS="${JAVA_OPTS} -Djboss.as.management.blocking.timeout=900"
+JAVA_OPTS="${JAVA_OPTS} -Djboss.server.default.config=standalone-full.xml"
+JAVA_OPTS="${JAVA_OPTS} -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+JAVA_OPTS="${JAVA_OPTS} -Dorg.jboss.logging.Logger.pluginClass=org.jboss.logging.logmanager.LoggerPluginImpl"
+JAVA_OPTS="${JAVA_OPTS} -Dorg.jboss.security.SecurityAssociation.ThreadLocal=true"
+JAVA_OPTS="${JAVA_OPTS} -Dactivemq.artemis.client.global.thread.pool.max.size=30"
+JAVA_OPTS="${JAVA_OPTS} -Dcom.planonsoftware.enableDBMetaDataChecks=false"
+JAVA_OPTS="${JAVA_OPTS} -Dcom.planonsoftware.cacheversioncheck.interval=-1"
+JAVA_OPTS="${JAVA_OPTS} -Dcom.planonsoftware.cloudmode=true"
+JAVA_OPTS="${JAVA_OPTS} -DPMFSSetting=<%= ENV['OPENSHIFT_PLN_DIR'] %>conf/"
+JAVA_OPTS="${JAVA_OPTS} -DOSGIExportPackagesFile=${OPENSHIFT_PLN_DIR}/conf/wildfly_export.packages"
+JAVA_OPTS="${JAVA_OPTS} -XX:+HeapDumpOnOutOfMemoryError"
+JAVA_OPTS="${JAVA_OPTS} -XX:HeapDumpPath=${OPENSHIFT_PLN_DIR}data/logging/heapdump/"
+JAVA_OPTS="${JAVA_OPTS} <%= ENV['PLN_APP_MODE'] %>"
+JAVA_OPTS="${JAVA_OPTS} <%= ENV['PLN_APP_MODETEXT'] %>"
+
+export JAVA_OPTS
+
+export LAUNCH_JBOSS_IN_BACKGROUND="TRUE"

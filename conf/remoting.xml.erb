@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+	<defaultMaxConnectionsPerRoute>200</defaultMaxConnectionsPerRoute>
+	<maxTotalConnections>200</maxTotalConnections>
+	<hosts>
+		<host>
+			<url>http://<%= ENV['OPENSHIFT_PLN_IP'] %>:<%= ENV['OPENSHIFT_PLN_HTTP_PORT_WILDFLY'] %>/rest</url>
+			<connection>
+				<charset>UTF-8</charset>
+			</connection>
+		</host>
+	</hosts>
+	<userAgent>PlanonRESTClient</userAgent>
+</Configuration>

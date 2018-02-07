@@ -1,0 +1,50 @@
+#!/bin/bash
+
+
+# Calculate the memory alotted to Tomcat
+MAXMXMEM=$(awk  -v perc=<%= ENV['PLN_TOMCAT_MEMORY'] %> -v tot=${OPENSHIFT_GEAR_MEMORY_MB} '
+        BEGIN { print int(tot * perc / 100) }')
+
+PLANONDIR="${TOMCAT}"
+
+export CATALINA_HOME=${PLANONDIR}
+export CATALINA_BASE=${PLANONDIR}
+export CATALINA_TMPDIR=${PLANONDIR}temp
+export UMASK=0022
+
+CATALINA_OPTS=""
+CATALINA_OPTS="${CATALINA_OPTS} -server"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+UseG1GC"
+CATALINA_OPTS="${CATALINA_OPTS} -Xms1024m"
+CATALINA_OPTS="${CATALINA_OPTS} -Xmx${MAXMXMEM}m"
+CATALINA_OPTS="${CATALINA_OPTS} -Djava.endorsed.dirs=${PLANONDIR}/endorsed"
+CATALINA_OPTS="${CATALINA_OPTS} -Dcatalina.base=${PLANONDIR}/"
+CATALINA_OPTS="${CATALINA_OPTS} -Dcatalina.home=${PLANONDIR}/"
+CATALINA_OPTS="${CATALINA_OPTS} -Djava.io.tmpdir=${PLANONDIR}temp"
+CATALINA_OPTS="${CATALINA_OPTS} -Djava.security.auth.login.config=${PLANONDIR}/conf/jaas.config"
+CATALINA_OPTS="${CATALINA_OPTS} -Dremoting.location=${TOMCAT_CONF}remoting.xml"
+CATALINA_OPTS="${CATALINA_OPTS} -Djava.awt.headless=true"
+CATALINA_OPTS="${CATALINA_OPTS} -Dorg.jboss.security.SecurityAssociation.ThreadLocal=true"
+CATALINA_OPTS="${CATALINA_OPTS} -da"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+HeapDumpOnOutOfMemoryError"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:HeapDumpPath=${OPENSHIFT_PLN_DIR}data/logging/heapdump/"
+
+#Webbootstrap configuration dirs
+CATALINA_OPTS="${CATALINA_OPTS} -Dplanon.bundles=${PLANONDIR}/bundles"
+CATALINA_OPTS="${CATALINA_OPTS} -Dplanon.config=${PLANONDIR}/conf"
+
+CATALINA_OPTS="${CATALINA_OPTS} -Dnl.planon.sdk.logging.properties=${PLANONDIR}/conf/sdk.logging.properties"
+CATALINA_OPTS="${CATALINA_OPTS} -Dnl.planon.mobile.logging.properties=${PLANONDIR}/conf/mobile.logging.properties"
+
+CATALINA_OPTS="${CATALINA_OPTS} -DCSSFILE=${PLANONDIR}/conf/pss-login.css"
+
+CATALINA_OPTS="${CATALINA_OPTS} -Djdk.util.TimeZone.allowSetDefault=true"
+CATALINA_OPTS="${CATALINA_OPTS} -Djava.util.logging.config.file=${PLANONDIR}/conf/logging.properties"
+CATALINA_OPTS="${CATALINA_OPTS} -Dnl.planon.logging.properties=${PLANONDIR}/conf/log4j.tomcat.properties"
+CATALINA_OPTS="${CATALINA_OPTS} -Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager"
+CATALINA_OPTS="${CATALINA_OPTS} -DOSGIExportPackagesFile=${OPENSHIFT_PLN_DIR}/conf/tomcat_export.packages"
+CATALINA_OPTS="${CATALINA_OPTS} -DPMFS_NoOfResponses=${PLN_PMFS_NUMBEROFRESPONSES}"
+CATALINA_OPTS="${CATALINA_OPTS} <%= ENV['PLN_RENDERID'] %>"
+
+export CATALINA_OPTS
+export JAVA_OPTS=""

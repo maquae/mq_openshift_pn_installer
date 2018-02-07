@@ -1,0 +1,289 @@
+#!/bin/bash
+# vi: set sw=4 ts=4 ai:
+
+# OpenShift cartridge function and constant library.
+# Source this file in the top of the program
+
+# Make sure all language settings are correct
+export LANG=C
+
+# Set the PATH
+export PATH=/bin/:/usr/bin:${PATH}
+
+#Version numbers components:
+export JDK_MAJOR='8'
+export JDK_MINOR='151'
+
+export WILDFLY_VERSION="wildfly-10.1.0.Final"
+
+export TOMCAT_VERSION="tomcat-8.5.24"
+
+
+# Constants
+export PLANON="${OPENSHIFT_PLN_DIR}PlanonProCenter/"
+export JAVA_HOME="${PLANON}jdk/"
+export WILDFLY="${PLANON}${WILDFLY_VERSION}/"
+export WILDFLY_DEPLOY="${WILDFLY}standalone/deployments/"
+export WILDFLY_CONF="${WILDFLY}standalone/configuration/"
+export WILDFLY_BUNDLES="${WILDFLY}standalone/bundles/"
+export TOMCAT="${PLANON}${TOMCAT_VERSION}/"
+export TOMCAT_WEBAPPS="${TOMCAT}webapps/"
+export TOMCAT_CLIENT_CERT_WEBAPPS="${TOMCAT}clientcertwebapps/"
+export TOMCAT_CONF="${TOMCAT}conf/"
+export TOMCAT_BUNDLES="${TOMCAT}bundles/"
+export TOMCATPID="${OPENSHIFT_PLN_DIR}run/tomcat.pid"
+export WILDFLYPID="${OPENSHIFT_PLN_DIR}run/wildfly.pid"
+#
+# Needed for Tomcat, but called CATALINA
+#
+export CATALINA_PID="${TOMCATPID}"
+
+if [[ x"${version:-}" != x"" ]]
+then
+	export DOWNLOAD_FILE_JDK="jdk-${JDK_MAJOR}u${JDK_MINOR}-linux-x64.gz"
+	export DOWNLOAD_FILE_WILDFLY="${version}-wildfly.zip"
+	export DOWNLOAD_FILE_TOMCAT="${version}-tomcat.zip"
+	export DOWNLOAD_FILE_CLOUD="${version}-cloud.zip"
+fi
+
+#
+export DOWNLOAD_LOCATION="${PLANON_ARTIFACT_URL}"
+
+#Cloudzip artifact names
+CLIENT_ARTIFACTNAME="com.planonsoftware.pcc.cockpit.cockpitclient-*.jar"
+SHARED_ARTIFACTNAME="com.planonsoftware.pcc.cockpit.sharedresourcescockpit-*.jar"
+CLOUDEXTENDEDQUERIES_ARTIFACTNAME="com.planonsoftware.pcc.cockpit.cloudextendedqueries-*.jar"
+IPBLOCKVALVE_ARTIFACTNAME="com.planonsoftware.pcc.cockpit.tomcatIpBlockValve-*.jar"
+SQLITE_ARTIFACTNAME="sqlite-jdbc-*.jar"
+
+# Return date/time in standard format
+now()
+{
+	date '+%Y-%m-%d %H:%M:%S'
+}
+
+
+# Display a status message
+showstatus()
+{	RC="${1:-1}"
+	shift
+	message="${*:-Unknown message}"
+
+	[[ ${RC} == 0 ]] && STATTXT="OK " || STATTXT="ERR"
+	str="$(printf -- "%s - %-3d - %s - %s\n" "$(now)" "${RC}" "${STATTXT}" "${message}")"
+
+	printf -- "${str}\n" >&2
+
+	if ! tty -s > /dev/null
+	then
+		if [[ x"${RC}" == x"0" ]]
+		then
+			client_result "${str}"
+			printf "\n"
+		else
+			client_error "${str}"
+			printf "\n"
+		fi
+	fi
+}
+
+
+share()
+{
+        if [[ x"${1}" = x"create" ]]
+        then
+            #
+                # Create data mount for customer
+                # Unmount with: fusermount -u ${OPENSHIFT_PLN_DIR}mount
+                #
+                # For this to work, make sure the file /etc/fuse.conf
+                # contains:
+                #               user_allow_other
+                #
+                CUSTSHARE=$(cat ${OPENSHIFT_PLN_DIR}conf/keys/share.mnt)
+	                sshfs                                                               \
+    	                -o allow_other                                                  \
+        	            -o workaround=all                                               \
+            	        -o idmap=user                                                   \
+                	    -o IdentityFile=${OPENSHIFT_PLN_DIR}conf/keys/share.priv       \
+                    	-o StrictHostKeyChecking=no                                     \
+                        -o UserKnownHostsFile=/dev/null                                 \
+                        -o reconnect                                                    \
+                        -o delay_connect                                                \
+                        -o follow_symlinks                                              \
+                        ${CUSTSHARE}                                                    \
+                        ${OPENSHIFT_PLN_DIR}mount
+                    fusermount -uz ${OPENSHIFT_PLN_DIR}mount
+                    sshfs                                                               \
+                        -o allow_other                                                  \
+                        -o workaround=all                                               \
+                        -o idmap=user                                                   \
+                        -o IdentityFile=${OPENSHIFT_PLN_DIR}conf/keys/share.priv       \
+                        -o StrictHostKeyChecking=no                                     \
+                        -o UserKnownHostsFile=/dev/null                                 \
+                        -o reconnect                                                    \
+                        -o delay_connect                                                \
+                        -o follow_symlinks                                              \
+                        ${CUSTSHARE}                                                    \
+                        ${OPENSHIFT_PLN_DIR}mount
+                showstatus "0" "mount : ${1}"
+        else
+                fusermount -u ${OPENSHIFT_PLN_DIR}mount
+        fi
+}
+extract()
+{
+
+	SRC="${1}"
+	DST="${2}"
+
+	unzip -q "${SRC}" -d "${DST}" 		\
+	 	 
+	RC=${?}
+
+	 # Check the unzip exitcode. If it's 0, return to the calling
+	 # program/function. If it's NOT 0, there is some kind of error
+	 # and we cannot continue. Just exit!!
+	 case ${RC}
+	 in
+	 	0)	return 0								;;
+	 	1)	MSG="Gone or more warning errors were encountered, but processing completed successfully anyway. This includes zipfiles where one or more files was skipped due to unsupported compression method or encryption with an unknown password."				;;
+	 	2)	MSG="a generic error in the zipfile format was detected. Processing may have completed successfully anyway; some broken zipfiles created by other archivers have simple work-arounds."						;;
+	 	3)	MSG="a severe error in the zipfile format was detected. Processing probably failed immediately."					;;
+	 	4)	MSG="unzip was unable to allocate memory for one or more buffers during program initialization."					;;
+	 	5)	MSG="unzip was unable to allocate memory or unable to obtain a tty to read the decryption password(s)."			;;
+	 	6)	MSG="unzip was unable to allocate memory during decompression to disk."			;;
+	 	7)	MSG="unzip was unable to allocate memory during in-memory decompression."					;;
+	 	9)	MSG="the specified zipfiles were not found."	;;
+	 	10)	MSG="invalid options were specified on the command line."	;;
+	 	11)	MSG="no matching files were found."	;;
+	 	50)	MSG="the disk is (or was) full during extraction."	;;
+	 	51)	MSG="the end of the ZIP archive was encountered prematurely."	;;
+	 	80)	MSG="the user aborted unzip prematurely with control-C (or similar)"	;;
+	 	81)	MSG="testing or extraction of one or more files failed due to unsupported compression methods or unsupported decryption."	;;
+	 	82)	MSG="no files were found due to bad decryption password(s). (If even one file is successfully processed, however, the exit status is 1.)"	;;
+	 	*)	MSG="Unknown error response"			;;
+	 esac
+
+     case ${RC}
+	 in
+	    0)	return 0								;;
+        *)	showstatus "${RC}" "unzip: ${MSG} source file ${1}"		;;
+	 esac
+	
+	exit ${RC}
+}
+
+getcockpitkey()
+{
+	SRC="${1}"
+	DST="${2}"
+
+	wget -q --http-user=cockpit 		\
+		--http-password=test1234 		\
+		--output-document="${DST}" 		\
+	 	 "${SRC}"
+
+	 RC=${?}
+
+	 # Check the wget exitcode. If it's 0, return to the calling
+	 # program/function. If it's NOT 0, there is some kind of error
+	 # and we cannot continue. Just exit!!
+	 case ${RC}
+	 in
+	 	0)	return 0								;;
+	 	1)	MSG="Generic error code"				;;
+	 	2)	MSG="Parse error"						;;
+	 	3)	MSG="File I/O error"					;;
+	 	4)	MSG="Network failure"					;;
+	 	5)	MSG="SSL verification failure"			;;
+	 	6)	MSG="Authentication failure"			;;
+	 	7)	MSG="Protocol error"					;;
+	 	8)	MSG="Server issued an error response"	;;
+	 	*)	MSG="Unknown error response"			;;
+	 esac
+
+     case ${RC}
+	 in
+	    0)	return 0								;;
+        *)	showstatus "${RC}" "wget: ${MSG} Cockpit ${1}"		;;
+	 esac
+	
+	exit ${RC}
+}
+
+# Get a file from the web
+getcockpit()
+{
+	SRC="${1}"
+	DST="${2}"
+
+    curl --header "x-cockpit-api:${PLN_COCKPIT_KEY}" \
+         --silent                        \
+         --user cockpit:test1234         \
+         --output -                      \
+         "${SRC}" > "${DST}"
+
+	 RC=${?}
+
+	 # Check the wget exitcode. If it's 0, return to the calling
+	 # program/function. If it's NOT 0, there is some kind of error
+	 # and we cannot continue. Just exit!!
+	 case ${RC}
+	 in
+	 	0)	return 0								;;
+	 	1)	MSG="Generic error code"				;;
+	 	2)	MSG="Parse error"						;;
+	 	3)	MSG="File I/O error"					;;
+	 	4)	MSG="Network failure"					;;
+	 	5)	MSG="SSL verification failure"			;;
+	 	6)	MSG="Authentication failure"			;;
+	 	7)	MSG="Protocol error"					;;
+	 	8)	MSG="Server issued an error response"	;;
+	 	*)	MSG="Unknown error response"			;;
+	 esac
+
+     case ${RC}
+	 in
+	    0)	return 0								;;
+        *)	showstatus "${RC}" "wget: ${MSG} Cockpit ${1}"		;;
+	 esac
+	
+	exit ${RC}
+}
+
+getartifact()
+{
+	SRC="${1}"
+	DST="${2}"
+
+	wget -q --output-document="${DST}" 	\
+	 	 "${DOWNLOAD_LOCATION}${version}/${SRC}"
+
+	RC=${?}
+
+	 # Check the wget exitcode. If it's 0, return to the calling
+	 # program/function. If it's NOT 0, there is some kind of error
+	 # and we cannot continue. Just exit!!
+	 case ${RC}
+	 in
+	 	0)	return 0								;;
+	 	1)	MSG="Generic error code"				;;
+	 	2)	MSG="Parse error"						;;
+	 	3)	MSG="File I/O error"					;;
+	 	4)	MSG="Network failure"					;;
+	 	5)	MSG="SSL verification failure"			;;
+	 	6)	MSG="Authentication failure"			;;
+	 	7)	MSG="Protocol error"					;;
+	 	8)	MSG="Server issued an error response"	;;
+	 	*)	MSG="Unknown error response"			;;
+	 esac
+
+     case ${RC}
+	 in
+	    0)	return 0								;;
+        *)	showstatus "${RC}" "wget: ${MSG} Artifact ${DOWNLOAD_LOCATION}${version}/${SRC}"		;;
+	 esac
+
+	exit ${RC}
+}

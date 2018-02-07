@@ -1,0 +1,37 @@
+PlanonWebclientLogin {
+  nl.planon.hades.client.authentication.jboss.TrustedServiceClientLoginModule required;
+};
+
+PlanonWebserviceLogin {
+  nl.planon.hades.client.authentication.jboss.JBossClientLoginModule  required multi-threaded=true;
+};
+
+PlanonPssMetaDataLogin {
+  nl.planon.hades.client.authentication.jboss.JBossClientLoginModule  required multi-threaded=true;
+};
+
+PlanonWebclientInitLogin {
+  nl.planon.hades.client.authentication.jboss.JBossClientLoginModule required multi-threaded=true;
+};
+
+PlanonRealmLogin {
+  nl.planon.cerebeus.PnAppServerLoginModule required 
+  user-role=planon debug=false;
+};
+
+ExchangeClientLoginConfiguration {
+  nl.planon.hades.client.authentication.jboss.TrustedServiceClientLoginModule required
+  keystore="${catalina.home}/exchangeKeystore.jks"
+  alias=EXCHANGE;
+};
+
+PlanonMobileTicketLogin {
+  nl.planon.telesto.twowayauthentication.PnMobileTwoWayAuthenticatorLoginModule sufficient user-role=planon;
+};
+
+
+PlanonEnterpriseServiceLogin {
+  nl.planon.hades.client.authentication.jboss.TrustedServiceClientLoginModule required
+  keystore="${catalina.home}/webclientKeystore.jks"
+  alias=WEBCLIENT;
+};

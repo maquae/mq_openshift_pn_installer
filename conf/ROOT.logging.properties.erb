@@ -1,0 +1,35 @@
+### The name of this Log4j configuration ###
+description=planon.selfservice2
+
+### Console appender ###
+log4j.appender.MyConsoleAppender = org.apache.log4j.ConsoleAppender
+log4j.appender.MyConsoleAppender.target = System.out
+log4j.appender.MyConsoleAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.MyConsoleAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}, %X{Principal}, thread=%X{Thread}] %x%m%n
+
+### File appender ###
+log4j.appender.MyRollingAppender = org.apache.log4j.RollingFileAppender
+log4j.appender.MyRollingAppender.File = <%= ENV['OPENSHIFT_PLN_DIR'] %>/logs/pss2.log
+log4j.appender.MyRollingAppender.MaxFileSize = 10MB
+log4j.appender.MyRollingAppender.MaxBackupIndex = 10
+log4j.appender.MyRollingAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.MyRollingAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}, %X{Principal}, thread=%X{Thread}] %x%m%n
+
+# default loglevel is WARN 
+log4j.rootLogger = WARN, MyConsoleAppender, MyRollingAppender
+
+# all log-lines from PnLogger should only be logged once; do NOT change unless 
+# you know what you're doing!!!
+log4j.additivity.pnlog = false
+
+#log4j.logger.pnlog.ALL.nl.planon.pss.engine.runtime.event = DEBUG
+#log4j.logger.pnlog.ALL.nl.planon.pss.engine.runtime.flowengine.impl = DEBUG
+#log4j.logger.pnlog.ALL.nl.planon.pss.engine.runtime.actionexecuter = DEBUG
+#log4j.logger.pnlog.ALL.nl.planon.pss.wicket = DEBUG
+#log4j.logger.pnlog.ALL.nl.planon.pss.wicket.caseview = DEBUG
+#log4j.logger.pnlog.ALL.nl.planon.pss.wicket.framework = DEBUG
+
+# the default PnLogger level is INFO
+log4j.logger.pnlog = INFO, MyConsoleAppender, MyRollingAppender
+
+###EOF###

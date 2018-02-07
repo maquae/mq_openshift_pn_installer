@@ -1,0 +1,26 @@
+### The name of this Log4j configuration ###
+description=planon.kiosk
+
+### Console appender ###
+log4j.appender.KioskConsoleAppender = org.apache.log4j.ConsoleAppender
+log4j.appender.KioskConsoleAppender.target = System.out
+log4j.appender.KioskConsoleAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.KioskConsoleAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}] %m%n
+
+### File appender ###
+log4j.appender.KioskRollingAppender = org.apache.log4j.RollingFileAppender
+log4j.appender.KioskRollingAppender.File = <%= ENV['OPENSHIFT_PLN_DIR'] %>/logs/kiosk.log
+log4j.appender.KioskRollingAppender.MaxFileSize = 10MB
+log4j.appender.KioskRollingAppender.MaxBackupIndex = 10
+log4j.appender.KioskRollingAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.KioskRollingAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}] %m%n
+
+# default loglevel is WARN 
+log4j.rootLogger = INFO, KioskConsoleAppender, KioskRollingAppender
+# all log-lines from PnLogger should only be logged once; do NOT change unless 
+# you know what you're doing!!!
+log4j.additivity.pnlog = false
+# the default PnLogger level is INFO
+log4j.logger.pnlog = INFO, KioskConsoleAppender, KioskRollingAppender
+
+###EOF###

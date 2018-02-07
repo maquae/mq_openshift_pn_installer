@@ -1,0 +1,26 @@
+### The name of this Log4j configuration ###
+description=planon.mobile
+
+### Console appender ###
+log4j.appender.MobileConsoleAppender = org.apache.log4j.ConsoleAppender
+log4j.appender.MobileConsoleAppender.target = System.out
+log4j.appender.MobileConsoleAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.MobileConsoleAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}] %m%n
+
+### File appender ###
+log4j.appender.MobileRollingAppender = org.apache.log4j.RollingFileAppender
+log4j.appender.MobileRollingAppender.File = <%= ENV['OPENSHIFT_PLN_DIR'] %>/logs/mobile.log
+log4j.appender.MobileRollingAppender.MaxFileSize = 10MB
+log4j.appender.MobileRollingAppender.MaxBackupIndex = 10
+log4j.appender.MobileRollingAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.MobileRollingAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}] %m%n
+
+# default loglevel is WARN 
+log4j.rootLogger = INFO, MobileConsoleAppender, MobileRollingAppender
+# all log-lines from PnLogger should only be logged once; do NOT change unless 
+# you know what you're doing!!!
+log4j.additivity.pnlog = false
+# the default PnLogger level is INFO
+log4j.logger.pnlog = INFO, MobileConsoleAppender, MobileRollingAppender
+
+###EOF###

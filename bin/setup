@@ -1,0 +1,177 @@
+#!/bin/bash
+# vi: set sw=4 ts=4 ai:
+
+# Determine the program name and the 'running directory'
+IAM="${0##*/}"
+CRD="$( [[ "${0:0:2}" = "./" ]] &&
+	{	printf "${PWD}/${0#./}"
+	} || {
+		printf "${0}"
+	})"
+CRD="${CRD%/*}"
+CUR="${PWD}"
+
+# Make sure all language settings are correct
+export LANG=C
+
+# Save the shell settings
+SETA=0; [[ ${-} = *a* ]] && SETA=1
+SETE=0; [[ ${-} = *e* ]] && SETE=1
+SETU=0; [[ ${-} = *u* ]] && SETU=1
+SETX=0; [[ ${-} = *x* ]] && SETX=1
+
+# Set and unset the needed shell settings
+set +o noclobber		# Overwrite existing files, if needed
+set -o nounset			# Do not allow uninitialized variables
+set +o errexit			# No returncode checking
+
+# Set the PATH
+PATH=/bin:/usr/bin:${PATH}
+
+# Read the OpenShift functions
+source ${OPENSHIFT_CARTRIDGE_SDK_BASH}
+
+# Set constants and read constants
+LIBDIR="${CRD}/../lib"
+LIBRARY="${LIBDIR}/library"
+[[ ! -r ${LIBRARY} ]] && { echo "${LIBRARY} not found"; exit 1; }
+. ${LIBRARY} || { echo "Error reading ${LIBRARY}"; exit 1; }
+
+# Create the some extra directories
+# run -> the PID files
+# lib -> the library files
+[[ ! -d ${OPENSHIFT_PLN_DIR}/run ]] && mkdir -p ${OPENSHIFT_PLN_DIR}/run
+[[ ! -d ${OPENSHIFT_PLN_DIR}/lib ]] && mkdir -p ${OPENSHIFT_PLN_DIR}/lib
+
+
+# Set Production - non production
+if [ x"${OPENSHIFT_NAMESPACE}" == x"prod" ] 
+then
+	showstatus "0" "PRODUCTION Environment"
+	#echo "-Dcom.planonsoftware.notproductionmode=false" > ${OPENSHIFT_PLN_DIR}env/PLN_JBOSS_MODE
+	#echo "-Dcom.planonsoftware.notproductionmode.description=PRODUCTION" > ${OPENSHIFT_PLN_DIR}env/PLN_JBOSS_MODETEXT
+else
+	if [ x"${OPENSHIFT_NAMESPACE}" == x"acc" ] 
+	then
+		showstatus "0" "ACCEPTANCE Environment"
+		echo "-Dcom.planonsoftware.notproductionmode=true" > ${OPENSHIFT_PLN_DIR}env/PLN_APP_MODE
+		echo "-Dcom.planonsoftware.notproductionmode.description=ACCEPTANCE" > ${OPENSHIFT_PLN_DIR}env/PLN_APP_MODETEXT
+	else
+		if [ x"${OPENSHIFT_NAMESPACE}" == x"test" ]
+		then
+			showstatus "0" "TEST Environment"
+			echo "-Dcom.planonsoftware.notproductionmode=true" > ${OPENSHIFT_PLN_DIR}env/PLN_APP_MODE
+			echo "-Dcom.planonsoftware.notproductionmode.description=TEST" > ${OPENSHIFT_PLN_DIR}env/PLN_APP_MODETEXT
+		else
+			if [ x"${OPENSHIFT_NAMESPACE}" == x"dev" ] 
+			then
+				showstatus "0" "DEV Environment"
+				echo "-Dcom.planonsoftware.notproductionmode=true" > ${OPENSHIFT_PLN_DIR}env/PLN_APP_MODE
+				echo "-Dcom.planonsoftware.notproductionmode.description=DEVELOPMENT" > ${OPENSHIFT_PLN_DIR}env/PLN_APP_MODETEXT
+				echo "-Dnl.planon.renderplanonid=true" > ${OPENSHIFT_PLN_DIR}env/PLN_RENDERID
+			else
+				showstatus "0" "INCORRECT Environment"
+			fi
+		fi	
+	fi	
+fi	
+
+getcockpitkey ${PLANON_COCKPIT_URL}ApikeyServerResource/${OPENSHIFT_APP_DNS} ${OPENSHIFT_PLN_DIR}env/PLN_COCKPIT_API_KEY
+
+echo -n "`cat ${OPENSHIFT_PLN_DIR}env/PLN_COCKPIT_API_KEY`${OPENSHIFT_APP_DNS}" | sha512sum | cut -c 1-128 > ${OPENSHIFT_PLN_DIR}env/PLN_COCKPIT_KEY
+
+export PLN_COCKPIT_KEY=`cat ${OPENSHIFT_PLN_DIR}env/PLN_COCKPIT_KEY`
+
+getcockpit	${PLANON_COCKPIT_URL}DatabasePlane/${OPENSHIFT_APP_DNS}/server ${OPENSHIFT_PLN_DIR}env/PLN_DB_SERVER
+getcockpit	${PLANON_COCKPIT_URL}DatabasePlane/${OPENSHIFT_APP_DNS}/username ${OPENSHIFT_PLN_DIR}env/PLN_DB_USERNAME
+getcockpit	${PLANON_COCKPIT_URL}DatabasePlane/${OPENSHIFT_APP_DNS}/password ${OPENSHIFT_PLN_DIR}env/PLN_DB_PASSWORD
+
+#Get license.lic and store in conf folder.
+getcockpit	${PLANON_COCKPIT_URL}PlanonLicenseResource/${OPENSHIFT_APP_DNS} ${OPENSHIFT_PLN_DIR}conf/license.lic
+
+#get SSO-client_settings
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/keycloakjson ${OPENSHIFT_PLN_DIR}/conf/keycloak.json
+
+#get SSO-status
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/keycloak ${OPENSHIFT_PLN_DIR}/env/PLN_SSO_ENABLED
+
+#get SSO-version
+getcockpit ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/keycloakVersion ${OPENSHIFT_PLN_DIR}/env/PLN_SSO_VERSION
+
+#get SSO-Server-status
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/keycloakAvailable ${OPENSHIFT_PLN_DIR}/env/PLN_SSOSERVER_AVAILABLE
+
+#get Extended Transaction Timout-status
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/extendedTransactionTimeout ${OPENSHIFT_PLN_DIR}/env/PLN_EXTENDEDTRANSACTION_ENABLED
+
+#get DEBUG-status
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/debug ${OPENSHIFT_PLN_DIR}/env/PLN_DEBUGLOG_ENABLED
+
+#get ipwhitelist
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/ipWhitelist ${OPENSHIFT_PLN_DIR}/env/IP_WHITELIST_REGEX
+
+#Get NYX Admin password and put it into a variable for erb processing.
+getcockpit	${PLANON_COCKPIT_URL}NyxResource/${OPENSHIFT_APP_DNS} ${OPENSHIFT_PLN_DIR}env/PLN_NYX_PASSWORD
+	
+#Get PMFS ID and put it into a variable for erb processing.
+getcockpit	${PLANON_COCKPIT_URL}PmfsResource/sysid/${OPENSHIFT_APP_DNS} ${OPENSHIFT_PLN_DIR}env/PLN_PMFS_ID	
+	
+#Get PMFS PASSWORD and put it into a variable for erb processing.
+getcockpit	${PLANON_COCKPIT_URL}PmfsResource/password/${OPENSHIFT_APP_DNS}	${OPENSHIFT_PLN_DIR}env/PLN_PMFS_PASSWORD
+
+#Get PMFS Maximum Number of Responses
+getcockpit  ${PLANON_COCKPIT_URL}PmfsResource/numberofresponses/${OPENSHIFT_APP_DNS} ${OPENSHIFT_PLN_DIR}env/PLN_PMFS_NUMBEROFRESPONSES
+
+#get Webdav username
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/webdav/user ${OPENSHIFT_PLN_DIR}/env/PLN_WEBDAV_USERNAME
+#get Webdav password
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/webdav/pass ${OPENSHIFT_PLN_DIR}/env/PLN_WEBDAV_PASSWORD
+
+#get TMS username
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/tms/user ${OPENSHIFT_PLN_DIR}/env/PLN_TMS_USERNAME
+#get TMS  password
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/tms/pass ${OPENSHIFT_PLN_DIR}/env/PLN_TMS_PASSWORD
+
+#get PEET credentials
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/peet/user ${OPENSHIFT_PLN_DIR}/env/PLN_PEET_USERNAME
+#get PEET password
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/peet/pass ${OPENSHIFT_PLN_DIR}/env/PLN_PEET_PASSWORD
+
+#get backup credentials
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/backup/user ${OPENSHIFT_PLN_DIR}/env/PLN_BACKUP_USERNAME
+#get backup password
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/backup/pass ${OPENSHIFT_PLN_DIR}/env/PLN_BACKUP_PASSWORD
+
+#get webservices credentials
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/webservices/user ${OPENSHIFT_PLN_DIR}/env/PLN_WEBSERVICES_USERNAME
+#get webservices password
+getcockpit	${PLANON_COCKPIT_URL}WebdavResource/${OPENSHIFT_APP_DNS}/webservices/pass ${OPENSHIFT_PLN_DIR}/env/PLN_WEBSERVICES_PASSWORD
+
+#get portal-settings
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/isPortalUrlEnabled ${OPENSHIFT_PLN_DIR}/env/PLN_ISPORTALURLENABLED
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/portalUrl ${OPENSHIFT_PLN_DIR}/env/PLN_PORTALURL
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/aliasUrl ${OPENSHIFT_PLN_DIR}/env/PLN_ALIASURL
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/aliasChain ${OPENSHIFT_PLN_DIR}/env/PLN_CHAIN
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/aliasSslCert ${OPENSHIFT_PLN_DIR}/env/PLN_ALIASSSLCERT
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/aliasPassphrase ${OPENSHIFT_PLN_DIR}/env/PLN_ALIASPASSPHRASE
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/aliasPrivKey ${OPENSHIFT_PLN_DIR}/env/PLN_ALIASPRIVKEY
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/aliasTrustedCas ${OPENSHIFT_PLN_DIR}/env/PLN_ALIASTRUSTEDCAS
+
+#Get tomcat users to be stored in the SQLite DB.
+getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/tomcatUsers ${OPENSHIFT_PLN_DIR}/env/PLN_TOMCAT_USERS
+
+#Get auditloggin setting
+getcockpit  ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/auditLoggingLevel ${OPENSHIFT_PLN_DIR}/env/PLN_AUDIT_LOGGING_LEVEL
+
+#Get memory percentages
+getcockpit      ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/tomcatMemory ${OPENSHIFT_PLN_DIR}/env/PLN_TOMCAT_MEMORY
+getcockpit      ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/wildflyMemory ${OPENSHIFT_PLN_DIR}/env/PLN_WILDFLY_MEMORY
+
+#set embedded jdk path for upgrade module
+echo ${OPENSHIFT_PLN_DIR}PlanonProCenter/jdk >>${OPENSHIFT_PLN_DIR}/env/PLN_JDK
+
+
+echo ${TOMCAT} >>${OPENSHIFT_PLN_DIR}/env/PLN_TOMCATFOLDER
+echo ${WILDFLY} >>${OPENSHIFT_PLN_DIR}/env/PLN_WILDFLYFOLDER
+
+exit 0

@@ -1,0 +1,574 @@
+#!/bin/bash
+# vi: set sw=4 ts=4 ai:
+
+# Determine the program name and the 'running directory'
+IAM="${0##*/}"
+CRD="$( [[ "${0:0:2}" = "./" ]] &&
+	{	printf "${PWD}/${0#./}"
+	} || {
+		printf "${0}"
+	})"
+CRD="${CRD%/*}"
+CUR="${PWD}"
+
+# Make sure all language settings are correct
+export LANG=C
+
+# Save the shell settings
+SETA=0; [[ ${-} = *a* ]] && SETA=1
+SETE=0; [[ ${-} = *e* ]] && SETE=1
+SETU=0; [[ ${-} = *u* ]] && SETU=1
+SETX=0; [[ ${-} = *x* ]] && SETX=1
+
+# Set and unset the needed shell settings
+set +o noclobber		# Overwrite existing files, if needed
+set -o nounset			# Do not allow uninitialized variables
+set +o errexit			# No returncode checking
+
+# Read the OpenShift functions
+source ${OPENSHIFT_CARTRIDGE_SDK_BASH}
+
+
+# Get the commandline options
+version=""
+case "${1}" in
+ 	-v|--version)
+ 		version="${2}"
+ 		;;
+esac
+
+
+# Set constants and read constants
+LIBDIR="${CRD}/../lib"
+LIBRARY="${LIBDIR}/library"
+[[ ! -r ${LIBRARY} ]] && { echo "${LIBRARY} not found"; exit 1; }
+. ${LIBRARY} || { echo "Error reading ${LIBRARY}"; exit 1; }
+
+
+if [[ x"${version}" == x"" ]]
+then
+	showstatus "0" "Install called without extra version info"
+else
+	showstatus "0" "Install called with version ${version}"
+fi
+
+# Program usage
+usage()
+{
+	T="	"
+	cat <<- @EOF
+		Usage: ${IAM} [-v version|-h]
+
+		${T}-h 	Shows this help
+		${T}-v 	Gives the version number to install
+	@EOF
+
+	exit 1
+}
+
+# create directory's
+mkdir -p ${OPENSHIFT_PLN_DIR}{run,tmp,conf,logs,data,mount}
+mkdir -p ${OPENSHIFT_PLN_DIR}/logs/boot
+mkdir -p ${TOMCAT}temp #Created too late, needed by SQLite JDBC driver.
+touch ${OPENSHIFT_PLN_DIR}/logs/sdk.log
+touch ${OPENSHIFT_PLN_DIR}/logs/mobile.log
+touch ${OPENSHIFT_PLN_DIR}/logs/kiosk.log
+
+# We assume this directory exists
+cd ${OPENSHIFT_PLN_DIR}
+mkdir -p ${JAVA_HOME}
+
+#Download and install correct JDK
+getartifact ${DOWNLOAD_FILE_JDK} ${DOWNLOAD_FILE_JDK}
+showstatus "0" "JDK downloaded"
+tar -xf ${DOWNLOAD_FILE_JDK} -C ${PLANON}jdk
+mv ${PLANON}jdk/jdk1.${JDK_MAJOR}.0_${JDK_MINOR}/* ${PLANON}jdk
+rm -f ${DOWNLOAD_FILE_JDK} 
+showstatus "0" "JDK installed in ${JAVA_HOME}"
+
+# Wildfly Installation
+getartifact ${DOWNLOAD_FILE_WILDFLY} ${DOWNLOAD_FILE_WILDFLY}
+showstatus "0" "WILDFLY downloaded"
+extract $DOWNLOAD_FILE_WILDFLY ${PLANON}
+rm -f ${DOWNLOAD_FILE_WILDFLY}
+showstatus "0" "Wildfly extracted"
+chmod +x ${WILDFLY}/bin/standalone.sh
+chmod +x ${WILDFLY}/bin/jboss-cli.sh
+
+#remove of planon application files. These will be placed by the services cartridge
+mkdir ${WILDFLY}/initmode
+mv ${WILDFLY_DEPLOY}/planonBackgroundActionJobs.ear ${WILDFLY}/initmode/
+mv ${WILDFLY_DEPLOY}/planonExchangeLink.ear ${WILDFLY}/initmode/
+mv ${WILDFLY_DEPLOY}/planonSchedulerEngine.ear ${WILDFLY}/initmode/
+
+#delete of planon application files not needed for this cartridge type
+rm -f ${WILDFLY_DEPLOY}/planonCADWorkbench.ear
+
+#Make sure there is no licence present.
+rm -f ${WILDFLY_CONF}/license.lic
+
+showstatus "0" "Wildfly cleaned"
+
+#add environment/pcc specific config files
+cp ${OPENSHIFT_PLN_DIR}conf/standalone-full.xml					${WILDFLY_CONF}
+cp ${OPENSHIFT_PLN_DIR}conf/license.lic 						${WILDFLY_CONF}
+
+
+#DEBUG ZAL ANDERS IN R16 PLAATS GAAN VINDEN (HOPELIJK)!!!
+#DEBUG_ENABLED=`cat ${OPENSHIFT_PLN_DIR}/env/PLN_DEBUGLOG_ENABLED`
+#if [[ x"${DEBUG_ENABLED}" == x"y" ]]
+#then
+#	cp ${OPENSHIFT_PLN_DIR}conf/jboss.debug.logging.properties 		${JBOSS}/bin/logging.properties
+#	cp -f ${OPENSHIFT_PLN_DIR}resources/log4j.jboss.debug.properties ${JBOSS}/bin/log4j.jboss.properties || showstatus %1 "copy log4j.jboss.debug.properties log4j.jboss.properties"
+#	cp -f ${OPENSHIFT_PLN_DIR}resources/jboss-logging_debug.xml ${JBOSS_DEPLOY}/jboss-logging.xml || showstatus %1 "copy jboss-logging_debug.xml jboss-logging.xml"
+#	showstatus "0" "DEBUG LOGGING JBOS ON!"
+#else
+#	cp ${OPENSHIFT_PLN_DIR}conf/jboss.logging.properties 		${JBOSS}/bin/logging.properties
+#	cp -f ${OPENSHIFT_PLN_DIR}resources/log4j.jboss.properties ${JBOSS}/bin/log4j.jboss.properties || showstatus %1 "copy log4j.jboss.debug.properties log4j.jboss.properties"
+#fi
+
+showstatus "0" "Wildfly configured!"
+
+# TOMCAT Installation
+getartifact ${DOWNLOAD_FILE_TOMCAT} ${DOWNLOAD_FILE_TOMCAT}
+showstatus "0" "Tomcat download"
+extract ${DOWNLOAD_FILE_TOMCAT} PlanonProCenter
+rm -f ${DOWNLOAD_FILE_TOMCAT}
+showstatus "0" "Tomcat exctracted"
+
+#cleanup unnecessary components for cloud from default installset
+rm -rf ${TOMCAT}tanuki 
+rm -f ${TOMCAT_WEBAPPS}nyx.war
+rm -f ${TOMCAT_WEBAPPS}PlanonWebstart/remoting.xml
+rm -f ${TOMCAT_CONF}tomcat-users.xml
+rm -f ${TOMCAT_CONF}Catalina/localhost/webdav.xml
+rm -f ${TOMCAT_CONF}Catalina/localhost/customization.xml
+
+showstatus "0" "Tomcat cleaned"
+
+#extract war files 
+extract ${TOMCAT_WEBAPPS}awm.war 								${TOMCAT_WEBAPPS}awm
+extract ${TOMCAT_WEBAPPS}mobile.war 							${TOMCAT_WEBAPPS}mobile
+extract ${TOMCAT_WEBAPPS}kiosk.war 							${TOMCAT_WEBAPPS}kiosk
+extract ${TOMCAT_WEBAPPS}pesc.war 								${TOMCAT_WEBAPPS}pesc
+extract ${TOMCAT_WEBAPPS}ROOT.war 								${TOMCAT_WEBAPPS}ROOT
+extract ${TOMCAT_WEBAPPS}sdk.war 								${TOMCAT_WEBAPPS}sdk
+extract ${TOMCAT_WEBAPPS}static.war 							${TOMCAT_WEBAPPS}static
+extract ${TOMCAT_WEBAPPS}ticket.war 							${TOMCAT_WEBAPPS}ticket
+extract ${TOMCAT_WEBAPPS}twowayauth.war 						${TOMCAT_WEBAPPS}twowayauth
+extract ${TOMCAT_WEBAPPS}webclient.war 							${TOMCAT_WEBAPPS}webclient
+
+#remove exctracted war files
+rm -f ${TOMCAT_WEBAPPS}*.war
+
+#removal of the original nyx webservices services folder, content will come from symlink folder on FS
+rm -rf ${TOMCAT_WEBAPPS}nyx/WEB-INF/services
+#removal of the original nyx webservices services folder, content will come from symlink folder on FS
+rm -rf ${TOMCAT_CLIENT_CERT_WEBAPPS}nyx/WEB-INF/services
+
+#removal of Catalina conf not supported in the cloud
+rm -f ${TOMCAT_CONF}customization.xml
+
+#copy various config files
+cp -f ${OPENSHIFT_PLN_DIR}conf/tomcat_remoting.xml				${TOMCAT_CONF}remoting.xml
+cp -f ${OPENSHIFT_PLN_DIR}conf/remoting.xml						${TOMCAT_WEBAPPS}PlanonWebstart
+cp -f ${OPENSHIFT_PLN_DIR}conf/jaas.config 						${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/kiosk.properties 				${TOMCAT_CONF}
+# not present in new installer
+#cp -f ${OPENSHIFT_PLN_DIR}conf/ROOT.properties 					${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/sdk.properties 					${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/ticket.properties				${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/mobile.logging.properties 		${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/mobile.logging.properties 		${TOMCAT_CONF}twowayauth.logging.properties
+cp -f ${OPENSHIFT_PLN_DIR}conf/ROOT.logging.properties 			${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/sdk.logging.properties 			${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/ticket.logging.properties		${TOMCAT_CONF}
+cp -f ${OPENSHIFT_PLN_DIR}conf/kiosk.logging.properties			${TOMCAT_CONF}
+
+#osgi setting ROOT
+sed -i "2a osgi.shell.telnet.ip=${OPENSHIFT_PLN_IP}" ${TOMCAT_WEBAPPS}/ROOT/WEB-INF/framework.properties
+cp ${OPENSHIFT_PLN_DIR}resources/org.apache.felix.shell-1.4.3.jar ${TOMCAT_WEBAPPS}/ROOT/WEB-INF/bundles
+cp ${OPENSHIFT_PLN_DIR}resources/org.apache.felix.shell.remote-1.1.2.jar ${TOMCAT_WEBAPPS}/ROOT/WEB-INF/bundles
+#osgi setting SDK
+sed -i "2a osgi.shell.telnet.ip=${OPENSHIFT_PLN_IP}" ${TOMCAT_WEBAPPS}/sdk/WEB-INF/framework.properties
+sed -i 's/9191/9292/g' ${TOMCAT_WEBAPPS}/sdk/WEB-INF/framework.properties
+cp ${OPENSHIFT_PLN_DIR}resources/org.apache.felix.shell-1.4.3.jar ${TOMCAT_WEBAPPS}/sdk/WEB-INF/bundles
+cp ${OPENSHIFT_PLN_DIR}resources/org.apache.felix.shell.remote-1.1.2.jar ${TOMCAT_WEBAPPS}/sdk/WEB-INF/bundles
+#osgi setting Mobile
+sed -i "2a osgi.shell.telnet.ip=${OPENSHIFT_PLN_IP}" ${TOMCAT_WEBAPPS}/mobile/WEB-INF/framework.properties
+sed -i 's/9191/9393/g' ${TOMCAT_WEBAPPS}/mobile/WEB-INF/framework.properties
+cp ${OPENSHIFT_PLN_DIR}resources/org.apache.felix.shell-1.4.3.jar ${TOMCAT_WEBAPPS}/mobile/WEB-INF/bundles
+cp ${OPENSHIFT_PLN_DIR}resources/org.apache.felix.shell.remote-1.1.2.jar ${TOMCAT_WEBAPPS}/mobile/WEB-INF/bundles
+#osgi setting WILDFLY not supported
+
+#nyx config
+cp ${OPENSHIFT_PLN_DIR}conf/axis2.xml ${TOMCAT_WEBAPPS}/nyx/WEB-INF/conf/
+#nyx config
+#KJ Copy nyx to TOMCAT_CLIENT_CERT_WEBAPPS to be able todo secure ssl 
+mkdir -p ${TOMCAT_CLIENT_CERT_WEBAPPS}
+cp -av ${TOMCAT_WEBAPPS}/nyx ${TOMCAT_CLIENT_CERT_WEBAPPS}/nyx
+cp ${OPENSHIFT_PLN_DIR}conf/axis2.xml ${TOMCAT_CLIENT_CERT_WEBAPPS}/nyx/WEB-INF/conf/
+
+#Add tomcat users to SQLite DB
+sqlite3 ${TOMCAT_CONF}tomcat-users.db "create table users (
+  user_name         varchar(50) not null primary key,
+  user_pass         varchar(50) not null
+);
+
+create table user_roles (
+  user_name         varchar(50) not null,
+  role_name         varchar(50) not null,
+  primary key (user_name, role_name)
+);"
+
+#Store the users (separated by a semicolon) in the USERS array.
+IFS=';' read -a USERS <<< ${PLN_TOMCAT_USERS}
+if [ -n "$USERS" ] && [ ${#USERS[@]}>0 ]; then
+	for USER_STRING in ${USERS[@]}
+	do
+		#Store the users information (separated by a comma) in the USER array.
+		IFS=',' read -a USER <<< "$USER_STRING"
+		if [ -n "$USER" ] && [ ${#USER[@]}>=2 ]; then
+			sqlite3 ${TOMCAT_CONF}tomcat-users.db "INSERT INTO users VALUES('${USER[0]}', '${USER[1]}');"
+			if [ ${#USER[@]} > 2 ]; then
+				for (( i=2; i<= ${#USER[@]}-1; i++ ))
+				do
+					sqlite3 ${TOMCAT_CONF}tomcat-users.db "INSERT INTO user_roles VALUES('${USER[0]}', '${USER[$i]}');"
+				done
+			fi
+		fi
+	done
+fi
+
+# add extra classpath paratmeters for webservice compilation PCC-2281
+cp ${OPENSHIFT_PLN_DIR}conf/setenv.sh ${TOMCAT}bin/setenv.sh
+
+#webdav users
+cp ${OPENSHIFT_PLN_DIR}conf/tomcat-users.xml 					${TOMCAT_CONF}
+cp -avr ${OPENSHIFT_PLN_DIR}conf/Catalina						${TOMCAT_CONF}
+cp ${OPENSHIFT_PLN_DIR}conf/tomcat_server.xml		 			${TOMCAT_CONF}server.xml
+chmod +x ${TOMCAT}bin/startup.sh
+chmod +x ${TOMCAT}bin/catalina.sh
+chmod +x ${TOMCAT}bin/shutdown.sh
+showstatus "0" "Tomcat download, unzipped and configured!"
+
+#Get credentials for share.
+getcockpit ${PLANON_COCKPIT_URL}FileServerResource/usr/${OPENSHIFT_APP_DNS} 	\
+	${OPENSHIFT_PLN_DIR}conf/keys/share.mnt
+getcockpit ${PLANON_COCKPIT_URL}FileServerResource/rsa/${OPENSHIFT_APP_DNS}	\
+	${OPENSHIFT_PLN_DIR}conf/keys/share.priv
+chmod 400 ${OPENSHIFT_PLN_DIR}conf/keys/share.priv
+
+
+#Get credentials for PCIS USER 
+getcockpit ${PLANON_COCKPIT_URL}PcisLoginResource/Functional/${OPENSHIFT_APP_DNS} 	\
+	${OPENSHIFT_PLN_DIR}conf/keys/Functional.credentials
+
+getcockpit ${PLANON_COCKPIT_URL}PcisLoginResource/Purchaser/${OPENSHIFT_APP_DNS} 	\
+	${OPENSHIFT_PLN_DIR}conf/keys/Purchaser.credentials
+
+#Get credentials for Cockpit acces.
+getcockpit ${PLANON_COCKPIT_URL}PcisLoginResource/Cockpit/${OPENSHIFT_APP_DNS} 	    \
+	${OPENSHIFT_PLN_DIR}conf/keys/Cockpit.credentials
+
+#
+# Create data mount for customer
+# Unmount with: mount drop
+#
+# For this to work, make sure the file /etc/fuse.conf
+# contains:
+#		user_allow_other
+#
+share 'create'
+showstatus "0" "Start share in install"
+
+# Ensure fileserver structure
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/securedocs"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/logging/audit"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/logging/heapdump"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/logging/logs"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/Documents" 
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/Evacuation plans"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/Exported reports"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/Forms"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/Images"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/PALs"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/PSS20Knowledgebase"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/Templates"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/BIM"
+mkdir -p "${OPENSHIFT_PLN_DIR}mount/live/webdav/SystemImages"
+
+# create symbolic link for webdav
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/webdav/WEB-INF
+cp -u ${OPENSHIFT_PLN_DIR}resources/WEBDAVweb.xml ${OPENSHIFT_PLN_DIR}mount/live/webdav/WEB-INF/web.xml
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/webdav/ ${OPENSHIFT_PLN_DIR}data/webdav
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/ ${TOMCAT_WEBAPPS}
+
+showstatus "0" "Webdav configured!"
+
+# create symbolic link for tms
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/WEB-INF
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/status
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/sdk
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/jboss-web
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/jboss
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/scheduler
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/exports
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/exports/jboss
+touch ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/exports/jboss/export.packages
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/exports/jboss-web
+touch ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/exports/jboss-web/export.packages
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/exports/jboss/export.packages ${OPENSHIFT_PLN_DIR}/conf/wildfly_export.packages
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/exports/jboss-web/export.packages ${OPENSHIFT_PLN_DIR}/conf/tomcat_export.packages
+cp -u ${OPENSHIFT_PLN_DIR}resources/TMSweb.xml ${OPENSHIFT_PLN_DIR}mount/live/tms/WEB-INF/web.xml
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/tms/ ${OPENSHIFT_PLN_DIR}data/tms
+touch ${OPENSHIFT_PLN_DIR}mount/live/tms/status/TMS-deployed.out
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/tms/status/TMS-deployed.out ${OPENSHIFT_PLN_DIR}logs/TMS-deployed.out
+ln -s ${OPENSHIFT_PLN_DIR}data/tms/ ${TOMCAT_WEBAPPS}
+showstatus "0" "TMS configured!"
+
+# create symbolic link for peet
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/peet/WEB-INF
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/peet/inbound
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/peet/outbound
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/peet/outbound/BIM/BaseTables
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/peet/outbound/BIM/Temp
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/peet/inbound/BIM/Import
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/peet/inbound/BIM/Temp
+cp -u ${OPENSHIFT_PLN_DIR}resources/PEETweb.xml ${OPENSHIFT_PLN_DIR}mount/live/peet/WEB-INF/web.xml
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/peet/ ${OPENSHIFT_PLN_DIR}data/peet
+ln -s ${OPENSHIFT_PLN_DIR}data/peet/ ${TOMCAT_WEBAPPS}
+showstatus "0" "peet configured!"
+
+# create symbolic link for backup
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/backup/WEB-INF
+cp -u ${OPENSHIFT_PLN_DIR}resources/BACKUPweb.xml ${OPENSHIFT_PLN_DIR}mount/backup/WEB-INF/web.xml
+ln -s ${OPENSHIFT_PLN_DIR}mount/backup/ ${OPENSHIFT_PLN_DIR}data/backup
+ln -s ${OPENSHIFT_PLN_DIR}data/backup/ ${TOMCAT_WEBAPPS}
+showstatus "0" "backup configured!"
+
+# create symbolic link for logging
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/logging/ ${OPENSHIFT_PLN_DIR}data/logging
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/logging/audit ${OPENSHIFT_PLN_DIR}logs/audit
+showstatus "0" "Logging configured!"
+
+# step 1 in old peet folder removal
+ if [ -d "${OPENSHIFT_PLN_DIR}mount/live/webdav/PEET" ]; 
+ 	then
+  		mv ${OPENSHIFT_PLN_DIR}mount/live/webdav/PEET/ ${OPENSHIFT_PLN_DIR}mount/live/webdav/Obsolete_peet
+  		cp -u ${OPENSHIFT_PLN_DIR}resources/readme_urgent.txt  ${OPENSHIFT_PLN_DIR}mount/live/webdav/PEET/README_URGENT.txt
+  		showstatus "0" "default webdav peet folder marked for obsolute!"
+  	else
+  		showstatus "0" "no default webdav peet folder present"
+fi
+
+#Create Symlink for nyx/webservices to webservices folder 
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/webservices/WEB-INF
+cp -u ${OPENSHIFT_PLN_DIR}resources/NYXweb.xml ${OPENSHIFT_PLN_DIR}mount/live/webservices/WEB-INF/web.xml
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/webservices/ ${OPENSHIFT_PLN_DIR}data/webservices
+#!!!!!!!!!!!!!!!TO DO: check if old nyx locations contains data, than move to new location and remove old location
+ln -s ${OPENSHIFT_PLN_DIR}data/webservices/ ${TOMCAT_WEBAPPS}nyx/WEB-INF/services
+ln -s ${OPENSHIFT_PLN_DIR}data/webservices/ ${TOMCAT_WEBAPPS}
+showstatus "0" "Webservices symlink configured!"
+
+#Create Symlink for ${TOMCAT_CLIENT_CERT_WEBAPPS}nyx/webservices to clientcertwebservices folder
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/clientcertwebservices/WEB-INF
+cp -u ${OPENSHIFT_PLN_DIR}resources/ClientCertNYXweb.xml ${OPENSHIFT_PLN_DIR}mount/live/clientcertwebservices/WEB-INF/web.xml
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/clientcertwebservices/ ${OPENSHIFT_PLN_DIR}data/clientcertwebservices
+#!!!!!!!!!!!!!!!TO DO: check if old nyx locations contains data, than move to new location and remove old location
+ln -s ${OPENSHIFT_PLN_DIR}data/clientcertwebservices/ ${TOMCAT_CLIENT_CERT_WEBAPPS}nyx/WEB-INF/services
+ln -s ${OPENSHIFT_PLN_DIR}data/clientcertwebservices/ ${TOMCAT_WEBAPPS}
+showstatus "0" "Client cert Webservices symlink configured!"
+
+#if there is no certificate create dummy jks
+if [[ ! -s ${OPENSHIFT_PLN_DIR}env/PLN_ALIASSSLCERT ]]; then
+  cat ${OPENSHIFT_PLN_DIR}resources/dummydomain.crt > ${OPENSHIFT_PLN_DIR}env/PLN_ALIASSSLCERT
+  cat ${OPENSHIFT_PLN_DIR}resources/dummydomain.key > ${OPENSHIFT_PLN_DIR}env/PLN_ALIASPRIVKEY
+fi
+#if there is no client ca create dummy ca jks
+if [[ ! -s ${OPENSHIFT_PLN_DIR}env/PLN_ALIASTRUSTEDCAS ]]; then
+  cat ${OPENSHIFT_PLN_DIR}resources/dummyca.crt > ${OPENSHIFT_PLN_DIR}env/PLN_ALIASTRUSTEDCAS
+fi
+#if there is no passprase 
+if [[ ! -s ${OPENSHIFT_PLN_DIR}env/PLN_ALIASPASSPHRASE ]]; then
+        PASSPHRASE_OPENSSL="-passout pass:changeit"
+        PASSPHRASE_KEYTOOL="-srcstorepass changeit"
+else
+        PASSPHRASE_OPENSSL="-passin pass:${PLN_ALIASPASSPHRASE} -passout pass:${PLN_ALIASPASSPHRASE}"
+        PASSPHRASE_KEYTOOL="-srcstorepass ${PLN_ALIASPASSPHRASE}"
+fi
+#generate alias jks file for client cert nix
+showstatus "0" "Client cert Webservices alais jks file geration started!"
+cat ${OPENSHIFT_PLN_DIR}env/PLN_ALIASSSLCERT > ${OPENSHIFT_PLN_DIR}conf/all.cert
+echo $'\n' >> ${OPENSHIFT_PLN_DIR}conf/all.cert
+cat ${OPENSHIFT_PLN_DIR}env/PLN_CHAIN >> ${OPENSHIFT_PLN_DIR}conf/all.cert
+echo "openssl:----------------------"
+export RANDFILE=${OPENSHIFT_PLN_DIR}tmp/.rnd;openssl pkcs12 -export -in ${OPENSHIFT_PLN_DIR}conf/all.cert -inkey ${OPENSHIFT_PLN_DIR}env/PLN_ALIASPRIVKEY -out ${OPENSHIFT_PLN_DIR}conf/domainalias.p12 -name domainalias ${PASSPHRASE_OPENSSL}
+echo "keytool domain:----------------------"
+${OPENSHIFT_PLN_DIR}PlanonProCenter/jdk/bin/keytool -importkeystore -deststorepass changeit -destkeypass changeit  -destkeystore ${TOMCAT}domainalias.jks -srckeystore ${OPENSHIFT_PLN_DIR}conf/domainalias.p12  -srcstoretype PKCS12 ${PASSPHRASE_KEYTOOL} -alias domainalias
+echo "keytool ca clients:----------------------"
+${OPENSHIFT_PLN_DIR}PlanonProCenter/jdk/bin/keytool -import -keystore ${TOMCAT}cacerts.jks -file ${OPENSHIFT_PLN_DIR}env/PLN_ALIASTRUSTEDCAS -storepass changeit -noprompt
+showstatus "0" "Client cert Webservices alais jks file generated!"
+
+# create symbolic link for secure documents
+ln -s ${OPENSHIFT_PLN_DIR}mount/live/securedocs/ ${OPENSHIFT_PLN_DIR}data/securedocs
+showstatus "0" "Securedocs configured!"
+
+#Create Migrate folder for Migration process
+mkdir -p ${OPENSHIFT_PLN_DIR}data/webdav/Migrate
+showstatus "0" "Migrate folder created"
+
+#Copy PC4A in webdav
+mkdir -p ${OPENSHIFT_PLN_DIR}data/webdav/Static/addon
+cp -u ${PLANON}addon/PC4A/"Planon Connect for AutoCAD Setup.exe" ${OPENSHIFT_PLN_DIR}data/webdav/Static/addon/"PlanonConnectforAutoCADSetup.exe"
+showstatus "0" "PC4A copied!"
+#Copy language files in webdav
+#rm -f ${OPENSHIFT_PLN_DIR}data/webdav/Static/addon/language/*
+#cp -u ${PLANON}/addon/language/* ${OPENSHIFT_PLN_DIR}data/webdav/Static/addon/language
+#showstatus "0" "Languagefiles copied!"
+
+
+#Copy background login image from tomcat to webdav if file not allready present and make static symlink for login-background.jpg
+mkdir -p ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon
+cp -n ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg
+cp -n ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.default.jpg
+
+#Ensure presence of favicons in case of new install
+cp -n ${TOMCAT_WEBAPPS}static/favicon.ico ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon* ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/
+
+#Ensure restore to defaults
+cp -n ${TOMCAT_WEBAPPS}static/favicon.ico ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.default.ico
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-114.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-114.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-128.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-128.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-144.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-144.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-152.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-152.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-16.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-16.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-24.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-24.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-32.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-32.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-57.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-57.default.png
+cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon-72.png ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/favicon-72.default.png
+
+#Remove images from static folder
+rm -f ${TOMCAT_WEBAPPS}static/images/background-index.jpg
+rm -f ${TOMCAT_WEBAPPS}static/images/background-index-1280.jpg
+rm -f ${TOMCAT_WEBAPPS}static/images/background-index-768.jpg
+rm -f ${TOMCAT_WEBAPPS}static/images/background-index-480.jpg
+rm -f ${TOMCAT_WEBAPPS}static/favicon.ico
+rm -f ${TOMCAT_WEBAPPS}static/images/favicon/favicon*
+
+#Link images and favicon from webdav static folder 
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg ${TOMCAT_WEBAPPS}static/images/background-index.jpg
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg ${TOMCAT_WEBAPPS}static/images/background-index-1280.jpg
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg ${TOMCAT_WEBAPPS}static/images/background-index-768.jpg
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg ${TOMCAT_WEBAPPS}static/images/background-index-480.jpg
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.default.jpg ${TOMCAT_WEBAPPS}static/images/background-index.default.jpg
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg ${TOMCAT_WEBAPPS}static/images/login_background.jpg
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.default.jpg ${TOMCAT_WEBAPPS}static/images/login_background.default.jpg
+
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.default.ico ${TOMCAT_WEBAPPS}/static/favicon.default.ico
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/favicon.ico 
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-114.png
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-128.png
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-144.png
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-152.png
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-16.png 
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-24.png 
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-32.png 
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-57.png 
+ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-72.png 
+
+showstatus "0" "Login background image + favicon symlink configured!"
+
+#Create link to catalina.out
+rm -f ${TOMCAT}logs/catalina.out
+touch ${OPENSHIFT_PLN_DIR}logs/catalina.out
+ln -s ${OPENSHIFT_PLN_DIR}logs/catalina.out ${TOMCAT}logs/catalina.out
+
+#Add cloud software
+getartifact ${DOWNLOAD_FILE_CLOUD} 	${DOWNLOAD_FILE_CLOUD}
+extract ${DOWNLOAD_FILE_CLOUD} ${WILDFLY}initmode/
+rm -f ${DOWNLOAD_FILE_CLOUD}
+#check if cloudzip wildlfy bundels are precent. if they are deploy them
+if [ -d "${WILDFLY}initmode/cloud/wildfly" ]; then
+  cp -f ${WILDFLY}initmode/cloud/wildfly/* ${WILDFLY_BUNDLES}planon/ 
+fi
+#check if cloudzip tomcat bundels are precent. if they are deploy them
+if [ -d "${WILDFLY}initmode/cloud/tomcat" ]; then
+  cp -f ${WILDFLY}initmode/cloud/tomcat/* ${TOMCAT_BUNDLES}ROOT/
+fi
+rm -rf ${WILDFLY}initmode/cloud
+
+#Add bundle for cockpit bundels in sdk
+mv -f ${WILDFLY}/initmode/cockpit/${CLIENT_ARTIFACTNAME} ${TOMCAT_BUNDLES}sdk
+mv -f ${WILDFLY}/initmode/cockpit/${SHARED_ARTIFACTNAME} ${TOMCAT_BUNDLES}sdk
+
+#Add bundle for cockpit activity tracker
+mv ${WILDFLY}initmode/cockpit/${CLOUDEXTENDEDQUERIES_ARTIFACTNAME} ${WILDFLY_BUNDLES}planon/
+mv ${WILDFLY}initmode/cockpit/${IPBLOCKVALVE_ARTIFACTNAME} ${TOMCAT}/lib/
+cp ${WILDFLY}initmode/cockpit/${SQLITE_ARTIFACTNAME} ${TOMCAT}/lib/
+mv ${WILDFLY}initmode/cockpit/${SQLITE_ARTIFACTNAME} ${TOMCAT_BUNDLES}sdk/
+
+SSO_ENABLED=`cat ${OPENSHIFT_PLN_DIR}/env/PLN_SSO_ENABLED`
+SSO_VERSION=`cat ${OPENSHIFT_PLN_DIR}/env/PLN_SSO_VERSION`
+SSOSERVER_AVAILABLE=`cat ${OPENSHIFT_PLN_DIR}/env/PLN_SSOSERVER_AVAILABLE`
+
+if [[ x"${SSO_ENABLED}" == x"y" ]]
+  then
+  mkdir keycloakclient
+  cd keycloakclient
+
+  #Get the right client for the right server
+  wget -q --output-document="keycloakclient.tar.gz"   "${PLANON_ARTIFACT_URL}keycloak/client/${SSO_VERSION}/keycloakclient-tomcat-8-acceskeys.tar.gz"
+  showstatus "0" "${SSO_VERSION} Keycloak client tomcat 8 acceskeys downloaded"
+  
+  tar -xf keycloakclient.tar.gz
+  rm -f keycloakclient.tar.gz
+  
+  #install keycloakclient adapter in tomcat
+  mv *  ${TOMCAT}/lib
+  cd ..
+  rm -rf keycloakclient
+
+  #Set realm to keycloak valve
+  mv ${TOMCAT_CONF}/Catalina/localhost/ROOT.xml ${OPENSHIFT_PLN_DIR}conf/ROOT.xml.init || showstatus %1 "store init ROOT.xml"
+  cp -f ${OPENSHIFT_PLN_DIR}resources/sso/ROOT.xml ${TOMCAT_CONF}/Catalina/localhost/ROOT.xml || showstatus %1 "copy keyclocked ROOT.xml"
+  
+  mv ${TOMCAT_CONF}/Catalina/localhost/webclient.xml ${OPENSHIFT_PLN_DIR}conf/webclient.xml.init || showstatus %1 "store init webclient.xml"
+  cp -f ${OPENSHIFT_PLN_DIR}resources/sso/webclient.xml ${TOMCAT_CONF}/Catalina/localhost/webclient.xml || showstatus %1 "copy keyclocked webclient.xml"
+
+  mv ${TOMCAT_CONF}/Catalina/localhost/ticket.xml ${OPENSHIFT_PLN_DIR}conf/ticket.xml.init || showstatus %1 "store init ticket.xml"
+  cp -f ${OPENSHIFT_PLN_DIR}resources/sso/ticket.xml ${TOMCAT_CONF}/Catalina/localhost/ticket.xml || showstatus %1 "copy keyclocked ticket.xml"
+
+  mv ${TOMCAT_CONF}/Catalina/localhost/mobile.xml ${OPENSHIFT_PLN_DIR}conf/mobile.xml.init || showstatus %1 "store init mobile.xml"
+  cp -f ${OPENSHIFT_PLN_DIR}resources/sso/mobile.xml ${TOMCAT_CONF}/Catalina/localhost/mobile.xml || showstatus %1 "copy keyclocked mobile.xml"
+
+  mv ${TOMCAT_CONF}/Catalina/localhost/mobile.xml ${OPENSHIFT_PLN_DIR}conf/mobile.xml.init || showstatus %1 "store init mobile.xml"
+  cp -f ${OPENSHIFT_PLN_DIR}resources/sso/mobile.xml ${TOMCAT_CONF}/Catalina/localhost/mobile.xml || showstatus %1 "copy keyclocked mobile.xml"
+
+  #Add keycloak settings to webapplications
+  cp -f ${OPENSHIFT_PLN_DIR}/conf/keycloak.json ${TOMCAT}/webapps/ROOT/WEB-INF/keycloak.json || showstatus %1 "copy ROOT keycloak.json file"
+  cp -f ${OPENSHIFT_PLN_DIR}/conf/keycloak.json ${TOMCAT}/webapps/webclient/WEB-INF/keycloak.json || showstatus %1 "copy webclient keycloak.json file"
+  cp -f ${OPENSHIFT_PLN_DIR}/conf/keycloak.json ${TOMCAT}/webapps/ticket/WEB-INF/keycloak.json || showstatus %1 "copy ROOT keycloak.json file"
+  cp -f ${OPENSHIFT_PLN_DIR}/conf/keycloak.json ${TOMCAT}/webapps/mobile/WEB-INF/keycloak.json || showstatus %1 "copy mobile keycloak.json file"
+
+  #Add jsp page to see user post to Planon
+  cp -f ${OPENSHIFT_PLN_DIR}/resources/sso/info.jsp ${TOMCAT}/webapps/ROOT/info.jsp
+  showstatus "0" "NON-PRODUCTION Environment, added info.jsp"
+  
+  showstatus "0" "Keycloak client installed"
+fi
+
+if [[ x"${PLN_ISPORTALURLENABLED}" == x"y" ]];then
+  cp -f ${OPENSHIFT_PLN_DIR}conf/portals.txt ${TOMCAT_CONF}/portals.txt || showstatus %1 "copy portals.txt"
+  showstatus "0" "Portals enabled"
+else
+  rm -f ${TOMCAT_CONF}/portals.txt || showstatus %1 "removed portals.txt"
+  showstatus "0" "Portals disabled"
+fi
+	
+
+share 'remove'
+showstatus "0" "End share in install"
+
+exit 0

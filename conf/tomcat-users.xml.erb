@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--${OPENSHIFT_APP_DNS}-->
+
+<tomcat-users>
+  <role rolename="webdav"/>
+  <role rolename="tms"/>
+  <role rolename="peet"/>
+  <role rolename="backup"/>
+  <role rolename="webservices"/>
+  <user username="<%= ENV['PLN_WEBDAV_USERNAME'] %>" password="<%= ENV['PLN_WEBDAV_PASSWORD'] %>" roles="webdav"/>
+  <user username="<%= ENV['PLN_TMS_USERNAME'] %>" password="<%= ENV['PLN_TMS_PASSWORD'] %>" roles="tms"/>
+  <user username="<%= ENV['PLN_PEET_USERNAME'] %>" password="<%= ENV['PLN_PEET_PASSWORD'] %>" roles="peet"/>
+  <user username="<%= ENV['PLN_BACKUP_USERNAME'] %>" password="<%= ENV['PLN_BACKUP_PASSWORD'] %>" roles="backup"/>
+  <user username="<%= ENV['PLN_WEBSERVICES_USERNAME'] %>" password="<%= ENV['PLN_WEBSERVICES_PASSWORD'] %>" roles="webservices"/>
+</tomcat-users>

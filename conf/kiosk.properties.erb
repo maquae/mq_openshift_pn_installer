@@ -1,0 +1,11 @@
+; default configuration for kiosk keystore access.
+
+; keystore file to load the private key from
+keystore-file = <%= ENV['PLN_TOMCATFOLDER'] %>/kiosk.jks
+; password to access the keystore itself
+keystore-password = geheim
+; password to access the key
+key-password = geheim
+; alias of key to load
+key-alias = kiosk
+

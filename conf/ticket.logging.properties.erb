@@ -1,0 +1,26 @@
+### The name of this Log4j configuration ###
+description=planon.twowayauth2
+
+### Console appender ###
+log4j.appender.TwoWayConsoleAppender = org.apache.log4j.ConsoleAppender
+log4j.appender.TwoWayConsoleAppender.target = System.out
+log4j.appender.TwoWayConsoleAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.TwoWayConsoleAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}] %m%n
+
+### File appender ###
+log4j.appender.TwoWayRollingAppender = org.apache.log4j.RollingFileAppender
+log4j.appender.TwoWayRollingAppender.File = ${catalina.base}/logs/ticket.log
+log4j.appender.TwoWayRollingAppender.MaxFileSize = 10MB
+log4j.appender.TwoWayRollingAppender.MaxBackupIndex = 10
+log4j.appender.TwoWayRollingAppender.layout = org.apache.log4j.PatternLayout
+log4j.appender.TwoWayRollingAppender.layout.ConversionPattern = %5p [%d{dd-MM-yyyy HH:mm:ss}] %m%n
+
+# default loglevel is WARN 
+log4j.rootLogger = INFO, TwoWayConsoleAppender, TwoWayRollingAppender
+# all log-lines from PnLogger should only be logged once; do NOT change unless 
+# you know what you're doing!!!
+log4j.additivity.pnlog = false
+# the default PnLogger level is INFO
+log4j.logger.pnlog = INFO, TwoWayConsoleAppender, TwoWayRollingAppender
+
+###EOF###

@@ -1,0 +1,173 @@
+#!/bin/bash
+# vi: set sw=4 ts=4 ai:
+
+# Syntax:
+# 	Example: control restart jboss
+#	will only restart the jboss server
+#
+
+# Make sure all language settings are correct
+export LANG=C
+
+# Make sure encoding is set to UTF-8, this is needed for Webdav file encoding
+export LC_ALL=en_US.UTF-8
+
+# Save the shell settings
+SETA=0; [[ ${-} = *a* ]] && SETA=1
+SETE=0; [[ ${-} = *e* ]] && SETE=1
+SETU=0; [[ ${-} = *u* ]] && SETU=1
+SETX=0; [[ ${-} = *x* ]] && SETX=1
+
+# Set and unset the needed shell settings
+set +o noclobber		# Overwrite existing files, if needed
+set -o nounset			# Don't allow uninitialized variables
+set +o errexit			# No returncode checking
+
+# Set the PATH
+PATH=/bin:/usr/bin:${PATH}
+
+# Read the OpenShift functions
+source ${OPENSHIFT_CARTRIDGE_SDK_BASH}
+
+# Set constants and read constants
+LIBDIR="${OPENSHIFT_PLN_DIR}/lib"
+LIBRARY="${LIBDIR}/library"
+[[ ! -r ${LIBRARY} ]] && { echo "${LIBRARY} not found"; exit 1; }
+. ${LIBRARY} || { echo "Error reading ${LIBRARY}"; exit 1; }
+
+
+# Check if the process is running
+# ${1} is the PID file for the app (Tomcat / JBoss)
+isrunning() {
+	PIDFILE="${1}"
+
+	# Check for running app
+	if [[ -f "${PIDFILE}" ]]
+	then
+		running=$(/bin/ps --no-headers --pid $(<${PIDFILE}))
+		if [[ x"${running}" = x"" ]]
+		then
+			# Not running
+			return 1
+		else
+			# running
+			return 0
+		fi
+	fi
+
+	# No PID file. Not running
+	return 1
+}
+
+showstatus "0" "Control Main called"
+case "${1:-}"
+in
+        onlyrunfromscript)                      echo "Start planon" ;;
+        *)                                      echo "THIS SCRIPT IS NOT SUPPOSED TO BE RUN FROM COMMANDLINE ONLY AS PART OF THE CONTROLE SCRIPT";exit;;
+esac
+
+# Start all services
+progs="${2:-all}"
+
+typeset -i RC=0
+showstatus "0" "start"
+showstatus "0" "Start planon cartridge runtime"
+
+# Create the file share mount
+share 'create'
+
+showstatus "0" "	Starting......."
+
+if [[ ( x"${progs}" = x"all" ) || ( x"${progs}" = x"wildfly" ) ]]
+then
+    # Check if Wildfly is running
+    if isrunning ${WILDFLYPID}
+    then
+        showstatus "1" "Program Wildfly is already running"
+    else
+        showstatus "0" "Program Wildfly is not running, starting up."
+        
+	#Set Get APP DNS for correct Ruxit Process ID
+        export RUXIT_CLUSTER_ID=${OPENSHIFT_APP_DNS}-wildfly
+        
+	#move server log to old logs. To make sure that we can detect if jboss is started.
+	DATETIME=`date +"%Y-%m-%d-%k-%M-%S"`
+	mv ${OPENSHIFT_PLN_DIR}/logs/server.log "${OPENSHIFT_PLN_DIR}/logs/server-${DATETIME}.log"
+        source ${OPENSHIFT_PLN_DIR}/conf/wildfly_settings
+        #make sure are always starting from the same dir
+        cd ${OPENSHIFT_PLN_DIR}
+        ${WILDFLY}/bin/standalone.sh > /dev/null 2>&1 &
+        #return to original dir
+        cd -
+        echo "${!}" > ${WILDFLYPID}
+    fi
+fi
+
+if [[ x"${progs}" = x"all" ]] 
+then
+	count=0
+
+	#jboss starting time out to 5min
+	jbossStartingTimeOut=300
+
+        #Check server uptime
+        uptime=`awk '{print $1*1000}' /proc/uptime`
+        #grace period in seconds, in which we consider the server to be in a booting state (extended JBOSS startup timeout during this period)
+        graceperiod=3600000
+        if [ ${uptime} -lt ${graceperiod} ]; then
+                #Set JBOSS startup timeout in seconds
+                jbossStartingTimeOut=900
+                showstatus "0" "Jboss startup time-out increased to ${jbossStartingTimeOut} seconds because of node restart"
+        fi
+        #Done check if the server has been booted just now
+
+	while [[ ${count} -lt ${jbossStartingTimeOut} ]] 
+	do
+         	 if grep "Determined runmode " ${OPENSHIFT_PLN_DIR}/logs/server.log
+		 then 
+			cp ${OPENSHIFT_PLN_DIR}/logs/server.log "${OPENSHIFT_PLN_DIR}/logs/wildfly_startup.log"
+			showstatus "0" "Jboss started within ${jbossStartingTimeOut} seconds continue to Tomcat"
+			break 
+		 else 
+			count=$(( ${count} + 1 ))
+			sleep 1
+		fi
+	done
+
+	if [[ ${count} -ge ${jbossStartingTimeOut} ]]
+	then
+		showstatus "1" "Jboss not started within ${jbossStartingTimeOut} seconds"
+		showstatus "1" "Cleaning up"
+		${OPENSHIFT_PLN_DIR}bin/control stop
+		showstatus "1" "Send to cockpit that we failed to start"
+		getcockpit ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/jbossFailed /dev/null
+		exit 1
+	fi
+fi
+
+
+if [[ ( x"${progs}" = x"all" ) || ( x"${progs}" = x"tomcat" ) ]]
+then
+	# TOMCAT creates its own PID file in ${CATALINA_PID}
+	# We point our ${TOMCATPID} to the same place
+	if isrunning ${TOMCATPID}
+	then
+		showstatus "1" "Program Tomcat is already running"
+	else
+		showstatus "0" "Program Tomcat is not running, starting up."
+		
+		#Set Get APP DNS for correct Ruxit Process ID
+		export RUXIT_CLUSTER_ID=${OPENSHIFT_APP_DNS}-tomcat
+		
+		source ${OPENSHIFT_PLN_DIR}/conf/tomcat_settings
+		cd ${TOMCAT}/bin
+		${TOMCAT}/bin/startup.sh >${OPENSHIFT_PLN_DIR}/logs/tomcat_startup.log 2>&1 &
+		cd -
+	fi
+fi
+
+showstatus "0" "trats"
+
+# Exit. No exit code!! The exit code will be the exit code
+# of the last run process!!
+exit

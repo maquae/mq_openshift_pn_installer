@@ -1,0 +1,15 @@
+<Context antiJARLocking="true" antiResourceLocking="true">        
+	<Realm appName="PlanonRealmLogin"
+                className="org.apache.catalina.realm.JAASRealm"
+                userClassNames="nl.planon.cerebeus.PnUser"
+                roleClassNames="nl.planon.cerebeus.PnRole"
+                allRolesMode="authOnly"/>
+        <Valve className="nl.planon.tomcat.AccessKeyValve" throttle="5000"/>
+        <Valve className="nl.planon.tomcat.keycloak.KeycloakAuthenticatorValve"/>
+	<Parameter name="trustedServiceKeystore" value="${catalina.home}/webclientKeystore.jks" />
+	<Parameter name="trustedServiceName" value="webclient" />
+        <Manager pathname="" />
+        <!-- Whitelist the minimal set of HTTP Methods that Web Bootstrap needs -->
+        <Valve className="nl.planon.owasp.valve.WhitelistHTTPMethodsValve" methods="GET, OPTIONS, HEAD, POST, PUT, DELETE" />
+</Context>
+

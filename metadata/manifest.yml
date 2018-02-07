@@ -1,0 +1,65 @@
+Name: planon
+Cartridge-Short-Name: PLN
+Source-Url: https://not_used
+Cartridge-Version: 29.0.0.0.178
+Compatible-Versions:
+- 0.9
+Cartridge-Vendor: planonsoftware
+Display-Name: Planon 29.0.0.0.178
+Description: "Planon"
+Version: '29.0.0.0.178'
+Versions:
+- '29.0.0.0.178'
+Vendor: planonsoftware.com
+Categories:
+  - web_framework
+  - service
+  - planoncloud
+Website: http://planoncloud.com
+Help-Topics:
+  "Developer Center": http://planoncloud.com
+Cart-Data:
+Provides:
+- Planon-29.0.0.0.178
+- Planon
+Subscribes:
+Scaling:
+  Min: 1
+  Max: 3
+Group-Overrides:
+Endpoints:
+  - Private-IP-Name: IP
+    Private-Port-Name: HTTP_PORT_TOMCAT
+    Private-Port: 18070
+    Protocols:
+    - http
+    - ws
+    primary: true
+    Mappings:
+    - Frontend: ''
+      Backend: ''
+      Options: { tohttps: '' }
+    - Frontend: '/webstart'
+      Backend: '/PlanonWebstart/planon.jnlp'
+      Options: { tohttps: '' }
+  - Private-IP-Name: IP
+    Private-Port-Name: HTTP_PORT_WILDFLY
+    Private-Port: 18080
+    Protocols:
+    - http
+    - ws
+    primary: true
+    Mappings:
+    - Frontend: 'rest'
+      Backend: 'rest'
+      Options: { tohttps: 'rest' }
+  - Private-IP-Name:   HAPROXY_IP
+    Private-Port-Name: HAPROXY_PORT
+    Private-Port:      1443
+    Public-Port-Name:  SSL_PROXY_PORT
+    Protocols:         [tls]
+    Mappings:
+      - Frontend:      ""
+        Backend:       ""
+Additional-Control-Actions:   
+- threaddump
