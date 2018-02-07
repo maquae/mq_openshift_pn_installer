@@ -1,6 +1,6 @@
 Name: planon
 Cartridge-Short-Name: PLN
-Source-Url: https://not_used
+Source-Url: https://raw.githubusercontent.com/maquae/mq_openshift_pn_installer/master/metadata/manifest.yml
 Cartridge-Version: 29.0.0.0.178
 Compatible-Versions:
 - 0.9
