@@ -244,6 +244,7 @@ tms()
         NOW=$(date +"%T %d-%m-%Y")
         echo "# This file is reserved for TMS entries - Last updated $NOW" > "${OPENSHIFT_PLN_DIR}data/tms/status/TMS-deployed.out"
 
+        link "servicessdk" "${TOMCAT}bundles/ROOT"
         link "sdk" "${TOMCAT}bundles/sdk"
         link "jboss-web" "${WILDFLY_BUNDLES}planon/web"
         link "jboss" "${WILDFLY_BUNDLES}planon"

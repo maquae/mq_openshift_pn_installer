@@ -37,12 +37,31 @@ LIBRARY="${LIBDIR}/library"
 [[ ! -r ${LIBRARY} ]] && { echo "${LIBRARY} not found"; exit 1; }
 . ${LIBRARY} || { echo "Error reading ${LIBRARY}"; exit 1; }
 
-client_result "Teardown called Main"
+client_result "Teardown called Planon"
 source=${OPENSHIFT_PLN_DIR}logs/*
 dest=${OPENSHIFT_PLN_DIR}mount/live/logging/logs
+heaps=${OPENSHIFT_PLN_DIR}mount/live/logging/heapdump
 showstatus "0" "Creating fileshare mount before exporting logfiles"
+
 share 'create'
+
+showstatus "0" "Remove symlinks to logfiles from previous restarts"
+rm -f ${OPENSHIFT_PLN_DIR}logs/logfiles*.zip
+
 showstatus "0" "Compressing and storing logfiles outside of gear"
-zip -j -r $dest/logfiles.$(date +%F_%H:%M).zip $source
+zip -j -r $dest/logfiles.beforerestart.$(date +%F_%H:%M).zip $source
+
+showstatus "0" "Remove all obsolete logfiles over 10"
+ls -1t $dest/logfiles*.zip | (i=0; while read f; do
+  if [ $i -lt 10 ]; then
+    ((i++))
+    continue
+  else
+    rm -f "$f"
+  fi
+done)
+
 share 'remove'
 showstatus "0" "End share after export logfiles"
+
+client_result "Teardown Planon finished"

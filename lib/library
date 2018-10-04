@@ -12,11 +12,11 @@ export PATH=/bin/:/usr/bin:${PATH}
 
 #Version numbers components:
 export JDK_MAJOR='8'
-export JDK_MINOR='151'
+export JDK_MINOR='181'
 
 export WILDFLY_VERSION="wildfly-10.1.0.Final"
 
-export TOMCAT_VERSION="tomcat-8.5.24"
+export TOMCAT_VERSION="tomcat-8.5.33"
 
 
 # Constants
@@ -179,8 +179,8 @@ getcockpitkey()
 	SRC="${1}"
 	DST="${2}"
 
-	wget -q --http-user=cockpit 		\
-		--http-password=test1234 		\
+	wget -q --http-user="${PLN_COCKPIT_USERNAME}" 		\
+		--http-password="${PLN_COCKPIT_PASSWORD}" 		\
 		--output-document="${DST}" 		\
 	 	 "${SRC}"
 
@@ -220,7 +220,7 @@ getcockpit()
 
     curl --header "x-cockpit-api:${PLN_COCKPIT_KEY}" \
          --silent                        \
-         --user cockpit:test1234         \
+         --user "${PLN_COCKPIT_USERNAME}:${PLN_COCKPIT_PASSWORD}"         \
          --output -                      \
          "${SRC}" > "${DST}"
 

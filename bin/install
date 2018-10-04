@@ -113,19 +113,20 @@ showstatus "0" "Wildfly cleaned"
 cp ${OPENSHIFT_PLN_DIR}conf/standalone-full.xml					${WILDFLY_CONF}
 cp ${OPENSHIFT_PLN_DIR}conf/license.lic 						${WILDFLY_CONF}
 
-
-#DEBUG ZAL ANDERS IN R16 PLAATS GAAN VINDEN (HOPELIJK)!!!
-#DEBUG_ENABLED=`cat ${OPENSHIFT_PLN_DIR}/env/PLN_DEBUGLOG_ENABLED`
-#if [[ x"${DEBUG_ENABLED}" == x"y" ]]
-#then
-#	cp ${OPENSHIFT_PLN_DIR}conf/jboss.debug.logging.properties 		${JBOSS}/bin/logging.properties
-#	cp -f ${OPENSHIFT_PLN_DIR}resources/log4j.jboss.debug.properties ${JBOSS}/bin/log4j.jboss.properties || showstatus %1 "copy log4j.jboss.debug.properties log4j.jboss.properties"
-#	cp -f ${OPENSHIFT_PLN_DIR}resources/jboss-logging_debug.xml ${JBOSS_DEPLOY}/jboss-logging.xml || showstatus %1 "copy jboss-logging_debug.xml jboss-logging.xml"
-#	showstatus "0" "DEBUG LOGGING JBOS ON!"
-#else
-#	cp ${OPENSHIFT_PLN_DIR}conf/jboss.logging.properties 		${JBOSS}/bin/logging.properties
-#	cp -f ${OPENSHIFT_PLN_DIR}resources/log4j.jboss.properties ${JBOSS}/bin/log4j.jboss.properties || showstatus %1 "copy log4j.jboss.debug.properties log4j.jboss.properties"
-#fi
+#encrypt db password for Wildfly
+export EncryptDBpwd1=$($JAVA_HOME/bin/java -cp ${WILDFLY}modules/system/layers/base/org/picketbox/main/picketbox-4.9.6.Final.jar org.picketbox.datasource.security.SecureIdentityLoginModule $PLN_DB_PASSWORD)
+export EncryptDBpwd2=$(echo $EncryptDBpwd1 | awk '{split($0, a, ": "); print a[2]}')
+echo 'embed-server -c=standalone-full.xml' > dbpwd.cli
+echo '/subsystem=security/security-domain=EncryptDBPassword:add()' >> dbpwd.cli
+echo "/subsystem=security/security-domain=EncryptDBPassword/authentication=classic:add(login-modules=[{\"code\"=>\"org.picketbox.datasource.security.SecureIdentityLoginModule\",\"flag\"=>\"required\",\"module-options\"=>[(\"username\"=>\"$PLN_DB_USERNAME\"),(\"password\"=>\"$EncryptDBpwd2\"),(\"managedConnectionFactoryName\"=>\"jboss.jca:service-LocalTxCM,name=PlanonDS\")]}])" >> dbpwd.cli
+echo '/subsystem=datasources/data-source=PlanonDS/:undefine-attribute(name=password)' >> dbpwd.cli
+echo '/subsystem=datasources/data-source=PlanonDS/:undefine-attribute(name=user-name)' >> dbpwd.cli
+echo '/subsystem=datasources/data-source=PlanonDS/:write-attribute(name=security-domain,value=EncryptDBPassword)' >> dbpwd.cli
+cat dbpwd.cli
+$WILDFLY/bin/jboss-cli.sh --file=dbpwd.cli
+rm -f dbpwd.cli
+rm -f ~/planon/env/PLN_DB_PASSWORD
+export PLN_DB_PASSWORD=""
 
 showstatus "0" "Wildfly configured!"
 
@@ -250,6 +251,41 @@ cp ${OPENSHIFT_PLN_DIR}conf/tomcat_server.xml		 			${TOMCAT_CONF}server.xml
 chmod +x ${TOMCAT}bin/startup.sh
 chmod +x ${TOMCAT}bin/catalina.sh
 chmod +x ${TOMCAT}bin/shutdown.sh
+
+#remove present keypairs
+rm -f ${TOMCAT}mobile.jks
+rm -f ${TOMCAT}sdk.jks
+rm -f ${TOMCAT}webclientKeystore.jks
+rm -f ${TOMCAT}awm.jks
+rm -f ${TOMCAT}exchangeKeystore.jks
+rm -f ${TOMCAT}kiosk.jks
+rm -f ${WILDFLY}standalone/mobile.jks
+rm -f ${WILDFLY}standalone/sdk.jks
+rm -f ${WILDFLY}standalone/webclientKeystore.jks
+rm -f ${WILDFLY}standalone/awm.jks
+rm -f ${WILDFLY}standalone/exchangeKeystore.jks
+rm -f ${WILDFLY}standalone/kiosk.jks
+rm -f ${WILDFLY}standalone/kiosk.crt
+rm -f ${WILDFLY}standalone/mobile.crt
+rm -f ${WILDFLY}standalone/exchangeCertificate.crt
+rm -f ${WILDFLY}standalone/sdk.crt
+rm -f ${WILDFLY}standalone/webclientCertificate.crt
+rm -f ${WILDFLY}standalone/awm.crt
+
+#generate keypairs
+$JAVA_HOME/jre/bin/keytool -genkeypair -alias MOBILE -keystore ${TOMCAT}mobile.jks -dname "CN= MOBILE O=Planon L=Nijmegen C=NL" -storepass 4n4m0Rf3 -keypass 4n4m0Rf3 -validity 3650
+$JAVA_HOME/jre/bin/keytool -genkeypair -alias SDK -keystore ${TOMCAT}sdk.jks -dname "CN= SDK O=Planon L=Nijmegen C=NL" -storepass 4n4m0Rf3 -keypass 4n4m0Rf3 -validity 3650
+$JAVA_HOME/jre/bin/keytool -genkeypair -alias WEBCLIENT -keystore ${TOMCAT}webclientKeystore.jks -dname "CN= WEBCLIENT O=Planon L=Nijmegen C=NL" -storepass 4n4m0Rf3 -keypass 4n4m0Rf3 -validity 3650
+$JAVA_HOME/jre/bin/keytool -genkeypair -alias AWM -keystore ${TOMCAT}awm.jks -dname "CN= AWM O=Planon L=Nijmegen C=NL" -storepass 4n4m0Rf3 -keypass 4n4m0Rf3 -validity 3650
+$JAVA_HOME/jre/bin/keytool -genkeypair -alias EXCHANGE -keystore ${TOMCAT}exchangeKeystore.jks -dname "CN= EXCHANGE O=Planon L=Nijmegen C=NL" -storepass 4n4m0Rf3 -keypass 4n4m0Rf3 -validity 3650
+$JAVA_HOME/jre/bin/keytool -genkeypair -alias KIOSK -keystore ${TOMCAT}kiosk.jks -dname "CN= KIOSK O=Planon L=Nijmegen C=NL" -storepass 4n4m0Rf3 -keypass 4n4m0Rf3 -validity 3650
+$JAVA_HOME/jre/bin/keytool -export -alias KIOSK -keystore ${TOMCAT}kiosk.jks -file ${WILDFLY}standalone/kiosk.crt -storepass 4n4m0Rf3 -keypass 4n4m0Rf3
+$JAVA_HOME/jre/bin/keytool -export -alias EXCHANGE -keystore ${TOMCAT}exchangeKeystore.jks -file ${WILDFLY}standalone/exchangeCertificate.crt -storepass 4n4m0Rf3 -keypass 4n4m0Rf3
+$JAVA_HOME/jre/bin/keytool -export -alias AWM -keystore ${TOMCAT}awm.jks -file ${WILDFLY}standalone/awm.crt -storepass 4n4m0Rf3 -keypass 4n4m0Rf3
+$JAVA_HOME/jre/bin/keytool -export -alias WEBCLIENT -keystore ${TOMCAT}webclientKeystore.jks -file ${WILDFLY}standalone/webclientCertificate.crt -storepass 4n4m0Rf3 -keypass 4n4m0Rf3
+$JAVA_HOME/jre/bin/keytool -export -alias SDK -keystore ${TOMCAT}sdk.jks -file ${WILDFLY}standalone/sdk.crt -storepass 4n4m0Rf3 -keypass 4n4m0Rf3
+$JAVA_HOME/jre/bin/keytool -export -alias MOBILE -keystore ${TOMCAT}mobile.jks -file ${WILDFLY}standalone/mobile.crt -storepass 4n4m0Rf3 -keypass 4n4m0Rf3
+
 showstatus "0" "Tomcat download, unzipped and configured!"
 
 #Get credentials for share.
@@ -310,6 +346,7 @@ showstatus "0" "Webdav configured!"
 mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/WEB-INF
 mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/status
 mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/sdk
+mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/servicessdk
 mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/jboss-web
 mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/jboss
 mkdir -p ${OPENSHIFT_PLN_DIR}mount/live/tms/upload/scheduler
@@ -427,15 +464,35 @@ showstatus "0" "PC4A copied!"
 #cp -u ${PLANON}/addon/language/* ${OPENSHIFT_PLN_DIR}data/webdav/Static/addon/language
 #showstatus "0" "Languagefiles copied!"
 
-
+#MAKE SURE THE content directory exsists on the webdav on first creation. 
+mkdir -p ${OPENSHIFT_PLN_DIR}data/webdav/Static/content
 #Copy background login image from tomcat to webdav if file not allready present and make static symlink for login-background.jpg
-mkdir -p ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon
-cp -n ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg
-cp -n ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.default.jpg
+#Only update the background with the latest default background image when the old default is still used.
+if [ -f ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg ] ||  [ -f ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.default.jpg ];then
+        if [[ $(md5sum ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.default.jpg | awk '{print $1}') == $(md5sum ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg | awk '{print $1}') ]]; then
+          cp -f ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg
+        else
+          cp -n ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg
+        fi
+else
+  #if either file is not there always copy
+  cp -f ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.jpg
+fi
 
-#Ensure presence of favicons in case of new install
-cp -n ${TOMCAT_WEBAPPS}static/favicon.ico ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico
-cp -n ${TOMCAT_WEBAPPS}static/images/favicon/favicon* ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon/
+#Always update the default background with the latest background image
+cp -f ${TOMCAT_WEBAPPS}static/images/background-index.jpg ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/login_background.default.jpg
+
+mkdir -p ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/images/favicon
+#Only update the favicon with the latest default favicon image when the old default is still used.
+if [ -f ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ] ||  [ -f ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.default.ico ];then
+        if [[ $(md5sum ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.default.ico | awk '{print $1}') == $(md5sum ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico | awk '{print $1}') ]]; then
+          cp -f ${TOMCAT_WEBAPPS}static/favicon.ico ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico
+        else
+          cp -n ${TOMCAT_WEBAPPS}static/favicon.ico ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico
+        fi
+else
+  cp -f ${TOMCAT_WEBAPPS}static/favicon.ico ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico
+fi
 
 #Ensure restore to defaults
 cp -n ${TOMCAT_WEBAPPS}static/favicon.ico ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.default.ico
@@ -479,6 +536,9 @@ ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPP
 ln -s ${OPENSHIFT_PLN_DIR}data/webdav/Static/content/favicon.ico ${TOMCAT_WEBAPPS}static/images/favicon/favicon-72.png 
 
 showstatus "0" "Login background image + favicon symlink configured!"
+
+#Make symlink to old logfiles
+[[ $(ls -A ${OPENSHIFT_PLN_DIR}data/logging/logs) ]] && ln -s ${OPENSHIFT_PLN_DIR}data/logging/logs/*.zip ${OPENSHIFT_PLN_DIR}/logs/
 
 #Create link to catalina.out
 rm -f ${TOMCAT}logs/catalina.out

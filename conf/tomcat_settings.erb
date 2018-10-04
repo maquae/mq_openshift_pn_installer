@@ -14,7 +14,6 @@ export UMASK=0022
 
 CATALINA_OPTS=""
 CATALINA_OPTS="${CATALINA_OPTS} -server"
-CATALINA_OPTS="${CATALINA_OPTS} -XX:+UseG1GC"
 CATALINA_OPTS="${CATALINA_OPTS} -Xms1024m"
 CATALINA_OPTS="${CATALINA_OPTS} -Xmx${MAXMXMEM}m"
 CATALINA_OPTS="${CATALINA_OPTS} -Djava.endorsed.dirs=${PLANONDIR}/endorsed"
@@ -28,6 +27,16 @@ CATALINA_OPTS="${CATALINA_OPTS} -Dorg.jboss.security.SecurityAssociation.ThreadL
 CATALINA_OPTS="${CATALINA_OPTS} -da"
 CATALINA_OPTS="${CATALINA_OPTS} -XX:+HeapDumpOnOutOfMemoryError"
 CATALINA_OPTS="${CATALINA_OPTS} -XX:HeapDumpPath=${OPENSHIFT_PLN_DIR}data/logging/heapdump/"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:OnOutOfMemoryError='date +%Y-%m-%d\ %H:%M:%S\ Tomcat\ heapdump > ${OPENSHIFT_PLN_DIR}logs/outofmemory.log'"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+UseG1GC"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+PrintGCDetails"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+PrintGCDateStamps"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+PrintReferenceGC"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+PrintAdaptiveSizePolicy"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:+UseGCLogFileRotation"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:GCLogFileSize=20m"
+CATALINA_OPTS="${CATALINA_OPTS} -XX:NumberOfGCLogFiles=5"
+CATALINA_OPTS="${CATALINA_OPTS} -Xloggc:${OPENSHIFT_PLN_DIR}logs/gc-tomcat.log"
 
 #Webbootstrap configuration dirs
 CATALINA_OPTS="${CATALINA_OPTS} -Dplanon.bundles=${PLANONDIR}/bundles"

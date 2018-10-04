@@ -200,6 +200,9 @@
             <logger category="pnlog.DEFAULT" use-parent-handlers="true">
                 <level name="INFO"/>
             </logger>
+            <logger category="org.apache.commons.httpclient.auth.AuthChallengeProcessor" use-parent-handlers="true">
+                <level name="WARN"/>
+            </logger>
             <logger category="pnlog.DEFAULT.nl.planon.auditlogging.AuditLogReporter" use-parent-handlers="false">
                 <level name="<%= ENV['PLN_AUDIT_LOGGING_LEVEL'] %>"/>
                 <handlers>
@@ -249,7 +252,7 @@
                     <new-connection-sql>PLN_SET_P5_SESSION</new-connection-sql>
                     <pool>
                         <min-pool-size>10</min-pool-size>
-                        <max-pool-size>30</max-pool-size>
+                        <max-pool-size><%= ENV['PLN_DB_MAX_POOL'] %></max-pool-size>
                     </pool>
                     <security>
                         <user-name><%= ENV['PLN_DB_USERNAME'] %></user-name>
@@ -320,7 +323,7 @@
                 <bean-instance-pools>
                     <strict-max-pool name="slsb-strict-max-pool" derive-size="from-worker-pools" instance-acquisition-timeout="5" instance-acquisition-timeout-unit="MINUTES"/>
                     <strict-max-pool name="mdb-strict-max-pool" derive-size="from-cpu-count" instance-acquisition-timeout="5" instance-acquisition-timeout-unit="MINUTES"/>
-                    <strict-max-pool name="LongProcessBackgroundActionMessagePool" max-pool-size="2" instance-acquisition-timeout="5" instance-acquisition-timeout-unit="MINUTES"/>
+                    <strict-max-pool name="LongProcessBackgroundActionMessagePool" max-pool-size="10" instance-acquisition-timeout="90" instance-acquisition-timeout-unit="MINUTES"/>
                     <strict-max-pool name="PMFSInboxMessagePool" max-pool-size="15" instance-acquisition-timeout="5" instance-acquisition-timeout-unit="MINUTES"/>
                     <strict-max-pool name="PMFSOutboxMessagePool" max-pool-size="15" instance-acquisition-timeout="5" instance-acquisition-timeout-unit="MINUTES"/>
                     <strict-max-pool name="ShortProcessBackgroundActionMessagePool" max-pool-size="5" instance-acquisition-timeout="5" instance-acquisition-timeout-unit="MINUTES"/>
@@ -356,7 +359,7 @@
             <log-system-exceptions value="true"/>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:io:1.1">
-            <worker name="default"/>
+            <worker name="default" task-max-threads="<%= ENV['PLN_TASK_MAX_THREADS'] %>"/>
             <buffer-pool name="default"/>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:infinispan:4.0">
@@ -532,7 +535,7 @@
                 </process-id>
             </core-environment>
             <recovery-environment socket-binding="txn-recovery-environment" status-socket-binding="txn-status-manager"/>
-            <coordinator-environment default-timeout="3000"/>
+            <coordinator-environment default-timeout="5400"/>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:undertow:3.1">
             <buffer-cache name="default"/>

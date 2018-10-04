@@ -127,6 +127,9 @@
 
         <!-- The clickjack host valve is smart and adds a X-Frame-Options header based on virtual host --> 
         <Valve className="nl.planon.tomcat.ClickjackHostValve"/>
+		
+		<!-- The XContentTypeOptionsNoSniffValve adds the X-Content-Type-Options nosniff header -->
+		<Valve className="nl.planon.owasp.valve.XContentTypeOptionsNoSniffValve"/>
 
         <!-- Add X-XSS-Protection header -->
         <Valve className="nl.planon.owasp.valve.XSSProtectionHeaderValve" forceOnOldIE="true" mode="1; mode=block"/>
