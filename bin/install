@@ -11,6 +11,8 @@ CRD="$( [[ "${0:0:2}" = "./" ]] &&
 CRD="${CRD%/*}"
 CUR="${PWD}"
 
+# create directory's MQ TEST FOR YAML SUPPORT
+
 # Make sure all language settings are correct
 export LANG=C
 
