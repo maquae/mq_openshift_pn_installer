@@ -1,6 +1,6 @@
 Name: planon
 Cartridge-Short-Name: PLN
-Source-Url: https://not_used
+Source-Url: https://github.com/maquae/mq_openshift_pn_installer/archive/pcc-4433.zip
 Cartridge-Version: 38.0.0.3.1
 Compatible-Versions:
 - 0.9
