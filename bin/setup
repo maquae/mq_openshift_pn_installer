@@ -169,9 +169,11 @@ getcockpit	${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/tomcatUser
 getcockpit  ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/auditLoggingLevel ${OPENSHIFT_PLN_DIR}/env/PLN_AUDIT_LOGGING_LEVEL
 
 #Get memory percentages
-getcockpit      ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/tomcatMemory ${OPENSHIFT_PLN_DIR}/env/PLN_TOMCAT_MEMORY
-getcockpit      ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/wildflyMemory ${OPENSHIFT_PLN_DIR}/env/PLN_WILDFLY_MEMORY
+getcockpit      ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/tomcatMemory ${OPENSHIFT_PLN_DIR}/env/PLN_TOMCAT_MEMORYPERC
+getcockpit      ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/wildflyMemory ${OPENSHIFT_PLN_DIR}/env/PLN_WILDFLY_MEMORYPERC
 getcockpit      ${PLANON_COCKPIT_URL}InstanceProperty/${OPENSHIFT_APP_DNS}/threadsPerGB ${OPENSHIFT_PLN_DIR}/env/PLN_THREADSPERGB
+
+#Calculate memory parameters for heap, GC and connectionpool
 export PLN_THREADSPERGB=$(cat ${OPENSHIFT_PLN_DIR}/env/PLN_THREADSPERGB)
 #multiple the threads per gb with the amount of gigs a cartridege gets
 export PLN_TASK_MAX_THREADS=$(($PLN_THREADSPERGB * ($OPENSHIFT_GEAR_MEMORY_MB / 1024)))
@@ -179,6 +181,27 @@ echo ${PLN_TASK_MAX_THREADS} > ${OPENSHIFT_PLN_DIR}/env/PLN_TASK_MAX_THREADS
 #make the db pool always 10% bigger then the max threads. (WATCHOUT shell script can not do 0.1 numbers so dont devide by 100. exampple 110 percent of 125 would fail 125/100 =1.25 shell does not do 1.25 so that becomes 1)
 export PLN_DB_MAX_POOL=$((($PLN_TASK_MAX_THREADS / 10) * 11))
 echo ${PLN_DB_MAX_POOL} > ${OPENSHIFT_PLN_DIR}/env/PLN_DB_MAX_POOL
+
+export PLN_TOMCAT_MEMORYPERC=$(cat ${OPENSHIFT_PLN_DIR}/env/PLN_TOMCAT_MEMORYPERC)
+export PLN_TOMCAT_MEMORY=$(( ($OPENSHIFT_GEAR_MEMORY_MB*$PLN_TOMCAT_MEMORYPERC+99) / 100 ))
+echo ${PLN_TOMCAT_MEMORY} >  ${OPENSHIFT_PLN_DIR}/env/PLN_TOMCAT_MEMORY
+
+export PLN_WILDFLY_MEMORYPERC=$(cat ${OPENSHIFT_PLN_DIR}/env/PLN_WILDFLY_MEMORYPERC)
+export PLN_WILDFLY_MEMORY=$(( ($OPENSHIFT_GEAR_MEMORY_MB*$PLN_WILDFLY_MEMORYPERC+99) / 100 ))
+echo ${PLN_WILDFLY_MEMORY} >  ${OPENSHIFT_PLN_DIR}/env/PLN_WILDFLY_MEMORY
+
+export PLN_TOMCAT_G1REGION=$(( ($PLN_TOMCAT_MEMORY / 2048) ))
+if [[ $PLN_TOMCAT_G1REGION < 1 ]]
+	then export PLN_TOMCAT_G1REGION=1
+fi
+echo ${PLN_TOMCAT_G1REGION} > ${OPENSHIFT_PLN_DIR}/env/PLN_TOMCAT_G1REGION
+
+export PLN_WILDFLY_G1REGION=$(( ($PLN_WILDFLY_MEMORY / 2048) ))
+if [[ $PLN_WILDFLY_G1REGION < 1 ]]
+	then export PLN_WILDFLY_G1REGION=1
+fi
+echo ${PLN_WILDFLY_G1REGION} > ${OPENSHIFT_PLN_DIR}/env/PLN_WILDFLY_G1REGION
+
 
 #set embedded jdk path for upgrade module
 echo ${OPENSHIFT_PLN_DIR}PlanonProCenter/jdk >>${OPENSHIFT_PLN_DIR}/env/PLN_JDK

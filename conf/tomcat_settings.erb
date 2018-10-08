@@ -1,10 +1,5 @@
 #!/bin/bash
 
-
-# Calculate the memory alotted to Tomcat
-MAXMXMEM=$(awk  -v perc=<%= ENV['PLN_TOMCAT_MEMORY'] %> -v tot=${OPENSHIFT_GEAR_MEMORY_MB} '
-        BEGIN { print int(tot * perc / 100) }')
-
 PLANONDIR="${TOMCAT}"
 
 export CATALINA_HOME=${PLANONDIR}
@@ -15,7 +10,7 @@ export UMASK=0022
 CATALINA_OPTS=""
 CATALINA_OPTS="${CATALINA_OPTS} -server"
 CATALINA_OPTS="${CATALINA_OPTS} -Xms1024m"
-CATALINA_OPTS="${CATALINA_OPTS} -Xmx${MAXMXMEM}m"
+CATALINA_OPTS="${CATALINA_OPTS} -Xmx${PLN_TOMCAT_MEMORY}m"
 CATALINA_OPTS="${CATALINA_OPTS} -Djava.endorsed.dirs=${PLANONDIR}/endorsed"
 CATALINA_OPTS="${CATALINA_OPTS} -Dcatalina.base=${PLANONDIR}/"
 CATALINA_OPTS="${CATALINA_OPTS} -Dcatalina.home=${PLANONDIR}/"

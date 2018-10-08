@@ -1,16 +1,10 @@
 #!/bin/bash
 
-# Calculate the memory alotted to WILDFLY 
-
-# Calculate the memory alotted to WILDFLY
-MAXMXMEM=$(awk  -v perc=<%= ENV['PLN_WILDFLY_MEMORY'] %> -v tot=${OPENSHIFT_GEAR_MEMORY_MB} '
-        BEGIN { print int(tot * perc / 100) }')
-
 JAVA_OPTS=""
 JAVA_OPTS="${JAVA_OPTS} -server" 
 JAVA_OPTS="${JAVA_OPTS} -da"
 JAVA_OPTS="${JAVA_OPTS} -Xms1024m"
-JAVA_OPTS="${JAVA_OPTS} -Xmx${MAXMXMEM}m"
+JAVA_OPTS="${JAVA_OPTS} -Xmx${PLN_WILDFLY_MEMORY}m"
 JAVA_OPTS="${JAVA_OPTS} -Dorg.jboss.boot.log.file=<%= ENV['OPENSHIFT_PLN_DIR'] %>logs/boot/boot.log"
 JAVA_OPTS="${JAVA_OPTS} -Djboss.server.log.dir=<%= ENV['OPENSHIFT_PLN_DIR'] %>logs/"
 JAVA_OPTS="${JAVA_OPTS} -Dlogging.configuration=file:${WILDFLY_CONF}/logging.properties"
